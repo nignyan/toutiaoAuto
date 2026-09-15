@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>热点内容自动化工作流 · 运营工作台 Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c1117;
+    --panel: #141b25;
+    --panel2: #1a2330;
+    --line: #263243;
+    --ink: #e8eef6;
+    --ink-dim: #8f9cb0;
+    --accent: #ffb020;
+    --ok: #3fd69a;
+    --warn: #ffb020;
+    --danger: #ff5c66;
+    --info: #59a7ff;
+    --mono: 'Chakra Petch', ui-monospace, monospace;
+    --sans: 'Manrope', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  /* 背景雷达波纹 */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(circle at 18% 12%, rgba(255,176,32,.06), transparent 34%),
+      radial-gradient(circle at 82% 85%, rgba(89,167,255,.05), transparent 40%),
+      radial-gradient(circle at 50% 50%, rgba(255,176,32,.03), transparent 60%);
+  }
+  .app { display: grid; grid-template-columns: 212px 1fr; height: 100%; position: relative; z-index: 1; }
+
+  /* 侧栏 */
+  .side {
+    background: #0d131b; border-right: 1px solid var(--line);
+    padding: 20px 14px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .brand { padding: 6px 10px 18px; }
+  .brand .mark { font-family: var(--mono); font-weight: 600; font-size: 13px; letter-spacing: .14em; color: var(--accent); }
+  .brand .sub { font-size: 11px; color: var(--ink-dim); font-family: var(--mono); margin-top: 6px; display:block; }
+  .nav {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .nav button {
+    display: flex; align-items: center; gap: 11px; padding: 10px 12px;
+    background: transparent; border: none; color: var(--ink-dim);
+    font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer;
+    border-radius: 9px; text-align: left; transition: .16s ease; position: relative;
+  }
+  .nav button .idx { font-family: var(--mono); font-size: 11px; width: 18px; color: #5c6a7c; }
+  .nav button:hover { background: #161f2b; color: var(--ink); }
+  .nav button.active { background: linear-gradient(90deg, rgba(255,176,32,.14), transparent); color: var(--ink); }
+  .nav button.active::before { content:""; position:absolute; left:0; top:8px; bottom:8px; width:2px; border-radius:2px; background: var(--accent);}
+  .demo-badge { margin-top:auto; padding: 10px; border:1px dashed #34435a; border-radius:9px; font-family:var(--mono); font-size:10px; color:#6c7d92; letter-spacing:.08em; }
+
+  /* 主区 */
+  .main { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 26px; border-bottom: 1px solid var(--line);
+    background: rgba(12,17,23,.7); backdrop-filter: blur(6px);
+  }
+  .topbar h1 { font-size: 17px; font-weight: 600; letter-spacing: .02em; }
+  .topbar .hint { font-size: 12px; color: var(--ink-dim); margin-top: 3px; font-family: var(--mono); }
+  .status { display: flex; align-items: center; gap: 20px; font-family: var(--mono); font-size: 12px; }
+  .status .chip { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-dim); }
+  .status .chip b { color: var(--ink); }
+  .status .chip .dot { width:8px; height:8px; border-radius:50%; background: var(--ok); display:inline-block; margin-right:7px; box-shadow:0 0 10px var(--ok); }
+
+  /* 流程步进条 */
+  .pipeline {
+    display: flex; align-items: stretch; gap: 0; padding: 14px 26px;
+    border-bottom: 1px solid var(--line); background: rgba(18,25,36,.6); overflow-x:auto;
+  }
+  .pipe { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; position: relative; }
+  .pipe .cap { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; color: #5c6a7c; }
+  .pipe .track { height: 5px; border-radius: 3px; background: #202b3a; position: relative; }
+  .pipe .track::after { content:""; position:absolute; left:0; top:0; bottom:0; border-radius:3px; background: linear-gradient(90deg, var(--accent), #ffd27a); transition:.35s ease; }
+  .pipe .lbl { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+  .pipe.on .track::after { width: 20%; animation: pulse 1.6s ease infinite; }
+  .pipe.done .track::after { width: 100%; }
+  .pipe.done .lbl, .pipe.on .lbl { color: var(--ink); }
+  .pipe.on .lbl { font-weight: 600; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .stage { overflow: auto; padding: 24px 26px 60px; min-width: 0; }
+
+  /* 通用卡片 */
+  .card {
+    background: linear-gradient(180deg, var(--panel), #121a25);
+    border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
+  }
+  .chip-mini { font-family: var(--mono); font-size: 10.5px; letter-spacing:.04em; padding:3px 8px; border-radius:5px; border:1px solid var(--line); color: var(--ink-dim); }
+  .tag { display:inline-block; font-family: var(--mono); font-size:10.5px; padding: 2px 7px; border-radius:5px; }
+  .tag.ok { background: rgba(63,214,154,.12); color: var(--ok); }
+  .tag.warn { background: rgba(255,176,32,.12); color: var(--warn); }
+  .tag.danger { background: rgba(255,92,102,.12); color: var(--danger); }
+  .tag.info { background: rgba(89,167,255,.12); color: var(--info); }
+
+  .grid { display: grid; gap: 14px; }
+  .g-hot { grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); }
+  .g-topic { grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); }
+  .g-row { grid-template-columns: 1fr 1fr 1fr; }
+  .section-title { font-family: var(--mono); font-size: 11px; letter-spacing:.16em; color:var(--accent); margin-bottom: 14px; display:flex; align-items:center; gap:10px; }
+  .section-title::after { content:""; flex:1; height:1px; background: var(--line); }
+
+  /* 热点卡片扫描 */
+  .radar-box { }
+  .hot-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .scan { font-family: var(--mono); font-size:11px; color:var(--info); letter-spacing:.14em; display:inline-flex; align-items:center; gap:8px;}
+  .scan .ring { width:10px;height:10px;border:1.5px solid var(--info); border-radius:50%; position:relative; }
+  .scan .ring::after { content:""; position:absolute; inset:0; border-radius:50%; border:1.5px solid var(--info); animation: ring 1.8s ease-out infinite; }
+  @keyframes ring { 0%{transform:scale(1);opacity:.9} 100%{transform:scale(2.6);opacity:0} }
+  .score { font-family: var(--mono); font-size: 24px; font-weight: 600; }
+  .score small { font-size: 12px; color: var(--ink-dim); }
+  .rise { font-family: var(--mono); font-size: 12px; color: var(--ok); }
+  .meta { color: var(--ink-dim); font-size: 12px; margin: 8px 0; line-height:1.6; }
+  .foot { display:flex; justify-content: space-between; align-items:center; margin-top: 12px; }
+  .btn { font-family: var(--sans); font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--panel2); color:var(--ink); cursor:pointer; transition:.15s ease; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn.primary { background: var(--accent); border-color:var(--accent); color:#1a1305; }
+  .btn.primary:hover { filter:brightness(1.08); color:#1a1305; }
+  .btn.ghost { background:transparent; color:var(--ink-dim); }
+
+  /* 事件卡片 */
+  .event .etop { display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .event h3 { font-size:14.5px; line-height:1.45; margin-bottom:8px; font-weight:600; }
+  .bar { height:5px; border-radius:3px; background:#202b3a; margin-top:10px; overflow:hidden;}
+  .bar i { display:block; height:100%; border-radius:3px; }
+  .assets-line { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .rule { font-family:var(--mono); }
+
+  /* 表格（队列/质检） */
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align:left; font-family:var(--mono); font-weight:500; font-size:10.5px; letter-spacing:.12em; color:#5c6a7c; padding:10px 12px; border-bottom:1px solid var(--line); }
+  td { padding: 13px 12px; border-bottom:1px solid #1b2634; vertical-align: middle; }
+  tr:hover td { background: rgba(255,255,255,.015); }
+  .col-title { font-weight:600; max-width: 220px; }
+  td small { display:block; color: var(--ink-dim); font-size:11px; margin-top:3px; }
+  .ql { display:flex; align-items:center; gap:8px; }
+
+  /* 素材 */
+  .asset .ahead { display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .density-big { font-family:var(--mono); font-size:22px; font-weight:600;}
+  .attrib { font-size:11px; color:var(--ink-dim); margin-top:6px; }
+
+  /* 数据回流 */
+  .advice { display:flex; gap:12px; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+  .advice .tag { align-self:flex-start; margin-top:2px; }
+  .advice p { font-size:12.5px; line-height:1.55; }
+  .kpis { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; margin-bottom: 22px; }
+  .kpi { padding: 16px; }
+  .kpi .v { font-family: var(--mono); font-size:26px; font-weight:600; }
+  .kpi .l { color: var(--ink-dim); font-size:12px; margin-top:6px; font-family:var(--mono); letter-spacing:.08em;}
+
+  .toast {
+    position: fixed; bottom: 26px; left: 50%; translate: -50% 0;
+    background: var(--panel2); border:1px solid var(--accent); color: var(--ink);
+    padding: 12px 20px; border-radius: 10px; font-size:13px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.5); opacity:0; transform: translateY(14px); pointer-events:none;
+    transition: .25s ease;
+  }
+  .toast.show { opacity:1; transform: translateY(0); }
+  @media (max-width: 900px) {
+    body { overflow:auto; }
+    .app { grid-template-columns: 64px 1fr; }
+    .side { padding: 20px 8px; }
+    .nav button span:not(.idx), .brand .sub { display:none; }
+    .nav button { justify-content:center; }
+    .g-row { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .demo-badge{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <span class="mark">HOT//FLOW</span>
+      <span class="sub">热点内容自动化工作流</span>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="demo-badge">DEMO · 模拟数据<br>仅验证界面与流程</div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="pageTitle">今日工作台</h1>
+        <div class="hint" id="pageHint">HOTSPOT → 发布 → 回流 全流程演示</div>
+      </div>
+      <div class="status">
+        <div class="chip"><b id="today">—</b>&nbsp;·&nbsp;字节纵横</div>
+        <div class="chip"><span class="dot"></span>采集器运行中</div>
+        <div class="chip">配额 <b id="quota">—</b></div>
+      </div>
+    </header>
+
+    <div class="pipeline" id="pipeline"></div>
+
+    <main class="stage" id="stage"><!-- 动态渲染 --></main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 模拟数据 ============ */
+const HOTSPOTS = [
+  { id:1, title:"某地突发山火，救援力量连夜展开扑救", src:"新闻/RSS", score:96, rise:"+320%", match:92, ts:"3 分钟前" },
+  { id:2, title:"网红带货翻车？千万粉丝博主涉嫌虚假宣传", src:"X/抖音热榜", score:91, rise:"+180%", match:74, ts:"6 分钟前" },
+  { id:3, title:"高校食堂新菜走红，网友热议'排队1小时'", src:"抖音热榜", score:87, rise:"+95%", match:88, ts:"9 分钟前" },
+  { id:4, title:"新能源车企发布新车型，续航大幅提升", src:"垂直信息源", score:84, rise:"+64%", match:90, ts:"12 分钟前" },
+  { id:5, title:"多地出现极端高温，部分景区临时闭园", src:"新闻/RSS", score:82, rise:"+51%", match:85, ts:"15 分钟前" },
+  { id:6, title:"小众非遗技艺走红短视频，年轻人争相打卡", src:"抖音热榜", score:79, rise:"+38%", match:70, ts:"18 分钟前" },
+];
+
+const TOPICS = [
+  { id:"E01", title:"某地突发山火，救援力量连夜扑救", score:96, rule:"规则1", ruleNote:"视频独立成片", density:78, match:92, format:"短视频", count:3, assets:["视频","图片"] },
+  { id:"E02", title:"网红带货虚假宣传引热议", score:91, rule:"规则2", ruleNote:"多图图集", density:null, match:74, format:"图集", count:2, assets:["图片"] },
+  { id:"E03", title:"高校食堂新菜走红登热搜", score:87, rule:"规则1", ruleNote:"视频独立成片", density:74, match:88, format:"短视频", count:2, assets:["视频","图片"] },
+  { id:"E04", title:"新能源车企发布新车型", score:84, rule:"规则3", ruleNote:"视频引子+图片补充", density:56, match:90, format:"图文/编辑", count:4, assets:["视频","图片","摘要"] },
+];
+
+const ASSETS = [
+  { name:"山火现场航拍.mp4", type:"视频", clarity:"超清", density:84, auth:"cleared", source:"A", dur:"0:58" },
+  { name:"救援画面近景.mp4", type:"视频", clarity:"清晰", density:77, auth:"cleared", source:"A", dur:"0:43" },
+  { name:"山火范围卫星图.jpg", type:"图片", clarity:"清晰", density:null, auth:"cleared", source:"B", dur:"—" },
+  { name:"现场抢险照 01.jpg", type:"图片", clarity:"清晰", density:null, auth:"cleared", source:"B", dur:"—" },
+  { name:"直播回放截图.png", type:"图片", clarity:"一般", density:null, auth:"pending", source:"B", dur:"—" },
+];
+
+const PRODUCTIONS = [
+  { title:"突发山火：救援力量连夜扑救现场直击", type:"30–60s 竖版视频", rule:"规则1", score:86, status:"q" },
+  { title:"网红带货翻车时间线 3 图", type:"图集视频", rule:"规则2", score:79, status:"q" },
+  { title:"高校新菜走红，短视频版", type:"30–60s 竖版视频", rule:"规则1", score:76, status:"held" },
+  { title:"新能源新车速览（图文）", type:"图文资讯", rule:"规则3", score:71, status:"hold2" },
+];
+
+const QUEUE = [
+  { title:"突发山火：救援力量连夜扑救现场直击", type:"竖版视频 / 58s", by:"规则1 命中", score:86, st:"pending" },
+  { title:"网红带货翻车时间线 3 图", type:"图集视频 / 9 帧", by:"规则2 命中", score:79, st:"pending" },
+  { title:"新能源新车速览（图文）", type:"图文 / 6 图", by:"规则3 命中", score:71, st:"pending" },
+  { title:"高校新菜走红短视频版", type:"竖版视频 / 46s", by:"质量分 76 <75 留档", score:76, st:"held" },
+];
+
+const REFLUX = [
+  { tag:"ok", text:"「突发#直击」标题模板近 7 天完播率高于均值 18%，建议沿用。", act:"建议" },
+  { tag:"warn", text:"图集视频在下午 12:00–14:00 时段表现更好，可调整该账号发布窗口。", act:"建议" },
+  { tag:"info", text:"「高校食堂」类热点在目标账号垂类匹配度仅 88→64，连续 3 天建议下调选题权重。", act:"待确认" },
+];
+
+/* ============ 视图缓存 ============ */
+const TOAST = document.getElementById("toast");
+let toastTimer;
+function toast(msg){
+  TOAST.textContent = msg; TOAST.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> TOAST.classList.remove("show"), 2400);
+}
+
+/* ============ 顶部流程步进条 ============ */
+const FLOW = [
+  ["01","热点雷达","FIND"],
+  ["02","选题中心","CLUSTER"],
+  ["03","素材资产","MEDIA"],
+  ["04","生产引擎","BUILD"],
+  ["05","自动质检","QC"],
+  ["06","待发布队列","SHIP"],
+  ["07","数据回流","LOOP"],
+];
+
+function renderPipeline(active){
+  const el = document.getElementById("pipeline"); el.innerHTML = "";
+  const ai = FLOW.findIndex(f=>f[1]===active);
+  FLOW.forEach((f,i)=>{
+    const d = document.createElement("div");
+    d.className = "pipe " + (i<ai?"done": i===ai?"on":"");
+    d.innerHTML = `<span class="cap">${f[0]}</span><div class="track"></div><span class="lbl">${f[1]}</span>`;
+    d.onclick = ()=> show(f[1]);
+    el.appendChild(d);
+  });
+}
+
+/* ============ 导航 ============ */
+const NAV = ["热点雷达","选题中心","素材资产","生产引擎","自动质检","待发布队列","数据回流"];
+const TITLES = {
+  "热点雷达":"热点雷达", "选题中心":"选题中心", "素材资产":"素材资产池",
+  "生产引擎":"内容生产引擎", "自动质检":"自动质检", "待发布队列":"今日待发布队列", "数据回流":"数据回流 · 建议动作"
+};
+const HINTS = {
+  "热点雷达":"全天接入多源信号，按热度·增速·垂类匹配综合评分",
+  "选题中心":"同一事件多源合并，自动挑选优先生产的当日选题",
+  "素材资产":"素材入库即算信息密度与授权合规，C 类/未授权不入生产",
+  "生产引擎":"按命中规则自动编排竖版视频 / 图集 / 图文",
+  "自动质检":"质量分 < 75 不进入当日配额；硬性一票否决直接拦截",
+  "待发布队列":"运营预览、改标题、排序后人工确认发布",
+  "数据回流":"MVP 仅输出建议动作，由运营人工确认"
+};
+
+/* ============ 视图渲染 ============ */
+function show(name){
+  document.getElementById("pageTitle").textContent = TITLES[name];
+  document.getElementById("pageHint").textContent = HINTS[name];
+  document.querySelectorAll(".nav button").forEach(b=>
+    b.classList.toggle("active", b.dataset.nav===name));
+  renderPipeline(name);
+  document.getElementById("stage").innerHTML = VIEWS[name]();
+  if(name==="待发布队列"){ document.getElementById("quota").textContent = QUEUE.filter(q=>q.st==="pending").length + " / 12"; }
+}
+
+function buildNav(){
+  const nav = document.getElementById("nav");
+  NAV.forEach((n,i)=>{
+    const b=document.createElement("button");
+    b.dataset.nav=n; b.innerHTML = `<span class="idx">0${i+1}</span><span>${n}</span>`;
+    b.onclick=()=>show(n); nav.appendChild(b);
+  });
+}
+
+/* —— 热点雷达 —— */
+const VIEWS = {
+  "热点雷达": ()=>`
+    <div class="section-title">LIVE SIGNAL · ${HOTSPOTS.length} 个信号待评分</div>
+    <div class="card radar-box" style="margin-bottom:16px">
+      <div class="hot-top">
+        <span class="scan"><span class="ring"></span>雷达扫频中 …</span>
+        <button class="btn ghost" onclick="simNewSignal()">模拟信号 +</button>
+      </div>
+      <div class="meta" style="margin:0">排序依据：时效性 × 热度 × 垂类匹配 × 素材完整度。日志以热点为单位<b>点击「加入选题池」</b>进入聚类。</div>
+    </div>
+    <div class="grid g-hot">${HOTSPOTS.map(h=>`
+      <div class="card">
+        <div class="hot-top"><span class="chip-mini">${h.src}</span><span class="ts" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">${h.ts}</span></div>
+        <div class="score">${h.score}<small>/100 · 增速 <b class="rise">${h.rise}</b></small></div>
+        <div class="meta">${h.title}</div>
+        <div class="bar"><i style="width:${h.score}%;background:linear-gradient(90deg,#ffb020,#ffd27a)"></i></div>
+        <div class="foot">
+          <span class="chip-mini">垂类匹配 ${h.match}%</span>
+          <button class="btn primary" onclick="pick('${h.title}')">加入选题池</button>
+        </div>
+      </div>`).join("")}
+    </div>`,
+  /* —— 选题中心 —— */
+  "选题中心": ()=>`
+    <div class="section-title">EVENT CLUSTER · 已聚类事件 18 个，展示当日优先候选</div>
+    <div class="grid g-topic">${TOPICS.map(e=>`
+      <div class="card event">
+        <div class="etop">
+          <span class="tag ${e.rule==='规则2'?'warn':e.rule==='规则3'?'info':'ok'}">命中 ${e.rule}</span>
+          <span class="chip-mini">${e.format}</span>
+        </div>
+        <h3>${e.title}</h3>
+        <div class="meta">热度 ${e.score} · 垂类匹配 ${e.match}% · 素材 ${e.count} 条</div>
+        <div class="rule" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">判定说明：${e.ruleNote}
+          ${e.density?` · 信息密度 ${e.density}`:''}</div>
+        <div class="assets-line">${e.assets.map(a=>`<span class="chip-mini">${a}</span>`).join("")}
+          <button class="btn ghost" style="margin-left:auto;padding:6px 10px" onclick="toast('已将该事件推进到生产引擎（演示）')">→ 生产</button>
+        </div>
+      </div>`).join("")}
+    </div>`,
+  /* —— 素材资产 ---- */
+  "素材资产": ()=>`
+    <div class="section-title">MEDIA POOL · 事件 E01 山火直击 · 入库即标注合规与信息密度</div>
+    <div class="grid g-page" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">${ASSETS.map(a=>`
+      <div class="card asset">
+        <div class="ahead">
+          <span class="tag ${a.type==='视频'?'ok':a.type==='图片'?'info':'warn'}">${a.type}</span>
+          <span class="chip-mini" style="margin-left:auto">源 ${a.source} 级</span>
+        </div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px">${a.name}</div>
+        <div style="display:flex;justify-content:space-between;align-items:end">
+          <div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">清晰度</div>
+            <div style="font-size:13px">${a.clarity}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">信息密度${a.density==null?' (—)':''}</div>
+            <div class="density-big" style="color:${a.density>=70?'var(--ok)':'var(--ink-dim)'}">${a.density==null?'N/A':a.density}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">时长</div>
+            <div class="density-big" style="font-size:16px">${a.dur}</div>
+          </div>
+        </div>
+        <div class="attrib">授权：<span class="tag ${a.auth==='cleared'?'ok':'warn'}">${a.auth==='cleared'?'已确认':'待确认'}</span>
+        ${a.auth!=='cleared'?'<span class="tag danger" style="margin-left:6px">不入生产</span>':''}</div>
+      </div>`).join("")}
+    </div>`,
+  /* —— 生产引擎 —— */
+  "生产引擎": ()=>`
+    <div class="section-title">BUILD ENGINE · 形态按命中规则自动编排 · 竖版裁剪 / 字幕 / 封面</div>
+    <div class="grid g-row">${PRODUCTIONS.slice(0,3).map(p=>`
+      <div class="card">
+        <span class="tag ${p.rule==='规则2'?'warn':p.rule==='规则1'?'ok':'info'}">${p.rule}</span>
+        <span class="chip-mini" style="margin-left:6px">${p.type}</span>
+        <h3 style="font-size:14px;margin:12px 0 6px;line-height:1.45">${p.title}</h3>
+        <div style="display:flex;gap:14px;font-family:var(--mono);font-size:12px;color:var(--ink-dim)">
+          <span>质分 <b style="color:${p.score>=75?'var(--ok)':'var(--warn)'}">${p.score}</b></span>
+          <button class="btn ghost" style="padding:5px 10px;font-size:11px" onclick="toast('演示：预览成片')">预览</button>
+        </div>
+      </div>`).join("")}
+    </div>`,
+  /* —— 自动质检 —— */
+  "自动质检": ()=>`
+    <div class="section-title">QUALITY GATE · 一票否决项优先，质量分 < 75 不进入当日配额</div>
+    <div class="card" style="margin-bottom:16px">
+      <table>
+        <tr><th>产物</th><th>形态</th><th>质量分</th><th>一票否决项</th><th>结论</th></tr>
+        <tr><td class="col-title">突发山火：救援扑救直击</td><td>竖版视频</td><td><div class="ql"><span>86</span><span class="tag ok">通过</span></div></td><td><small>来源完整 · 素材可用 · 授权已确认 · 署名齐全</small></td><td><span class="tag ok">放行</span></td></tr>
+        <tr><td class="col-title">网红带货翻车时间线</td><td>图集视频</td><td><div class="ql"><span>79</span><span class="tag ok">通过</span></div></td><td><small>来源完整 · 素材可用 · 授权已确认</small></td><td><span class="tag ok">放行</span></td></tr>
+        <tr><td class="col-title">高校新菜走红短视频</td><td>竖版视频</td><td><div class="ql"><span>76</span><span class="tag warn">留档</span></div></td><td><small>无一票否决 · 质量分 < 75 ↓ 已降至 76</small></td><td><span class="tag warn">降级次日重试</span></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <b style="font-size:13px">风险事件复核（待确认）</b>
+      <div style="margin-top:10px" class="grid g-row">
+        <div class="advice"><span class="tag danger">拦截</span><p><b>敏感事件·山火伤亡数</b><br>引用比例超限，署名缺失，硬性一票否决</p></div>
+        <div class="advice"><span class="tag warn">复核</span><p><b>授权待定·某图片</b><br>来源 B 类，授权尚未确认，暂不入生产</p></div>
+      </div>
+    </div>`,
+  /* —— 待发布队列 —— */
+  "待发布队列": ()=>`
+    <div class="section-title">DAILY SHIP · 运营 <b style="color:var(--accent)">人工确认发布</b> · 优先级 = 事件评分降序</div>
+    <div class="card">
+      <table>
+        <tr><th>今日待发布</th><th>形态</th><th>来源</th><th>质量分</th><th>状态 / 操作</th></tr>
+        ${QUEUE.map((q,i)=>`
+        <tr>
+          <td class="col-title">${q.title}</td>
+          <td>${q.type}</td>
+          <td><small>${q.by}</small></td>
+          <td style="color:${q.score>=75?'var(--ok)':'var(--warn)'};font-family:var(--mono)">${q.score}</td>
+          <td>
+            ${q.st==='held'
+              ? `<span class="tag warn">留档 · 次日重试</span> <button class="btn ghost" onclick="rescue(${i})">手动捞回</button>`
+              : q.st==='published'
+                ? `<span class="tag ok">已发布</span>`
+                : q.st==='skipped'
+                  ? `<span class="tag danger">已跳过</span> <button class="btn ghost" style="padding:5px 9px;font-size:11px" onclick="undoSkip(${i})">撤销跳过</button>`
+                  : `<button class="btn ghost" style="padding:5px 9px;font-size:11px" onclick="toast('演示：预览成片')">预览</button>
+                     <button class="btn ghost" style="padding:5px 9px;font-size:11px" onclick="editTitle(${i})">改标题</button>
+                     <button class="btn ghost" style="padding:5px 9px;font-size:11px" onclick="skip(${i})">跳过</button>
+                     <button class="btn primary" style="padding:5px 10px;font-size:11px" onclick="publish(${i})">提交发布</button>`}
+          </td>
+        </tr>`).join("")}
+      </table>
+      <div style="margin-top:14px;padding:12px;border:1px dashed #34435a;border-radius:10px;color:var(--ink-dim);font-size:12px;font-family:var(--mono)">
+        ⓘ 发布为最终动作，仅在用户授权后于头条侧执行。本 Demo 中点击「提交发布」仅切换状态演示。
+      </div>
+    </div>`,
+  /* —— 数据回流 —— */
+  "数据回流": ()=>`
+    <div class="section-title">REFLUX · MVP 仅输出建议动作，由运营确认，<b>不自动调参</b></div>
+    <div class="kpis">
+      <div class="card kpi"><div class="v">+18%</div><div class="l">完播率 / 近7天</div></div>
+      <div class="card kpi"><div class="v">12:00</div><div class="l">图集最优时段</div></div>
+      <div class="card kpi"><div class="v">-6.2%</div><div class="l">「食堂」类匹配度</div></div>
+      <div class="card kpi"><div class="v">3</div><div class="l">待运营确认建议</div></div>
+    </div>
+    <div class="section-title">建议动作（人工确认后才生效）</div>
+    <div class="grid g-row">
+      ${REFLUX.map(r=>`<div class="advice"><span class="tag ${r.tag==='ok'?'ok':r.tag==='warn'?'warn':'info'}">${r.tag==='ok'?'沿用':r.tag==='warn'?'调整':'待确认'}</span>
+        <p>${r.text}</p></div>`).join("")}
+    </div>
+    <div style="margin-top:16px;font-size:11.5px;color:var(--ink-dim);font-family:var(--mono)">
+      · 措施示例：单次调幅 ≤ 15% · 观察期 7 天 · 一键回滚 · 仅对当前账号生效
+    </div>`,
+};
+
+/* ============ 交互动作 ============ */
+function pick(t){ toast(`「${t.slice(0,12)}…」已加入选题池（演示）`); }
+function simNewSignal(){ toast("已模拟推入 1 条新热点信号（演示）"); }
+function publish(i){ QUEUE[i].st="published"; toast("已提交发布 → 状态切换为「已发布」（演示）"); show("待发布队列"); }
+function skip(i){ QUEUE[i].st="skipped"; toast("已跳过该条（演示）"); show("待发布队列"); }
+function editTitle(i){ const t=prompt("修改标题（演示）：", QUEUE[i].title); if(t) QUEUE[i].title=t; show("待发布队列"); }
+function rescue(i){ toast("已从留档手动捞回（演示）"); }
+function undoSkip(i){ QUEUE[i].st="pending"; toast("已撤销跳过，重新回到待发布（演示）"); show("待发布队列"); }
+
+/* ============ 启动 ============ */
+document.getElementById("today").textContent = new Date().toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit",weekday:"short"});
+buildNav();
+show("待发布队列");
+</script>
+</body>
+</html>
