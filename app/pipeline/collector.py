@@ -16,6 +16,16 @@ from app.models import AuthStatus, Clarity, MediaAsset, MediaType, SourceType
 
 WEIBO_HOT_URL = "https://weibo.com/ajax/side/hotSearch"
 
+# 微博接口对无浏览器特征的请求返回 403，默认携带浏览器头（实测 2026-09-15）
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        " (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://weibo.com/",
+    "Accept": "application/json, text/plain, */*",
+}
+
 
 class CollectorError(Exception):
     """单个数据源采集失败。"""
@@ -74,17 +84,24 @@ class WeiboHotSearchSource:
 
     name = "weibo_hot"
 
-    def __init__(self, timeout_s: float = 10.0, client_factory=None) -> None:
-        """client_factory: 注入 httpx.Client 工厂（测试用 MockTransport 替换）。"""
+    def __init__(
+        self,
+        timeout_s: float = 10.0,
+        client_factory=None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        """client_factory: 注入 httpx.Client 工厂（测试用 MockTransport 替换）；
+        headers: 覆盖默认浏览器请求头。"""
         self._timeout_s = timeout_s
         self._client_factory = client_factory
+        self._headers = headers if headers is not None else DEFAULT_HEADERS
 
     def fetch(self) -> list[RawSignal]:
         try:
             client = (
                 self._client_factory()
                 if self._client_factory is not None
-                else httpx.Client(timeout=self._timeout_s)
+                else httpx.Client(timeout=self._timeout_s, headers=self._headers)
             )
             with client:
                 resp = client.get(WEIBO_HOT_URL)
