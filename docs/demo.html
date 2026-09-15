@@ -219,6 +219,13 @@
 
 <script>
 /* ============ 模拟数据 ============ */
+const ACCOUNTS = [
+  { name:"蓝鲸视野", vertical:"科技数码", role:"主域", daily:8, win:"12:00–22:30", st:"active", stTag:"在线" },
+  { name:"民生一线", vertical:"社会民生", role:"主域", daily:8, win:"08:00–20:00", st:"active", stTag:"在线" },
+  { name:"潮玩研究所", vertical:"泛文化娱乐", role:"测试域A", daily:6, win:"14:00–23:00", st:"active", stTag:"实验" },
+  { name:"出行未来", vertical:"汽车出行", role:"测试域B", daily:6, win:"11:30–21:00", st:"active", stTag:"实验" },
+  { name:"HotTest-01", vertical:"垂类实验", role:"实验域", daily:4, win:"自动编排", st:"pause", stTag:"暂停" },
+];
 const HOTSPOTS = [
   { id:1, title:"某地突发山火，救援力量连夜展开扑救", src:"新闻/RSS", score:96, rise:"+320%", match:92, ts:"3 分钟前" },
   { id:2, title:"网红带货翻车？千万粉丝博主涉嫌虚假宣传", src:"X/抖音热榜", score:91, rise:"+180%", match:74, ts:"6 分钟前" },
@@ -274,6 +281,7 @@ function toast(msg){
 
 /* ============ 顶部流程步进条 ============ */
 const FLOW = [
+  ["00","账号矩阵","ACCT"],
   ["01","热点雷达","FIND"],
   ["02","选题中心","CLUSTER"],
   ["03","素材资产","MEDIA"],
@@ -296,18 +304,19 @@ function renderPipeline(active){
 }
 
 /* ============ 导航 ============ */
-const NAV = ["热点雷达","选题中心","素材资产","生产引擎","自动质检","待发布队列","数据回流"];
+const NAV = ["账号矩阵","热点雷达","选题中心","素材资产","生产引擎","自动质检","待发布队列","数据回流"];
 const TITLES = {
-  "热点雷达":"热点雷达", "选题中心":"选题中心", "素材资产":"素材资产池",
+  "账号矩阵":"账号矩阵", "热点雷达":"热点雷达", "选题中心":"选题中心", "素材资产":"素材资产池",
   "生产引擎":"内容生产引擎", "自动质检":"自动质检", "待发布队列":"今日待发布队列", "数据回流":"数据回流 · 建议动作"
 };
 const HINTS = {
-  "热点雷达":"全天接入多源信号，按热度·增速·垂类匹配综合评分",
-  "选题中心":"同一事件多源合并，自动挑选优先生产的当日选题",
+  "账号矩阵":"垂类定向 + 多域测试账号 + 头条账号域设置，一处配置全自动生效",
+  "热点雷达":"多源信号自动采集·去重·评分，无人值守持续推送",
+  "选题中心":"聚类后自动匹配合规素材与形态，自动触发生产，无需人工",
   "素材资产":"素材入库即算信息密度与授权合规，C 类/未授权不入生产",
   "生产引擎":"按命中规则自动编排竖版视频 / 图集 / 图文",
   "自动质检":"质量分 < 75 不进入当日配额；硬性一票否决直接拦截",
-  "待发布队列":"运营预览、改标题、排序后人工确认发布",
+  "待发布队列":"运营仅在发布环节人工确认，其余全自动",
   "数据回流":"MVP 仅输出建议动作，由运营人工确认"
 };
 
@@ -331,44 +340,107 @@ function buildNav(){
   });
 }
 
-/* —— 热点雷达 —— */
+/* —— 账号矩阵 —— */
 const VIEWS = {
+  "账号矩阵": ()=>`
+    <div class="section-title">ACCOUNT MATRIX · 垂类定向 + 多域测试 + 域设置，一处配置全自动生效</div>
+    <div class="grid" style="grid-template-columns: 1.6fr 1fr;align-items:start">
+      <div class="card">
+        <table>
+          <tr><th>账号</th><th>垂类定向</th><th>角色</th><th>日配额</th><th>发布窗口</th><th>状态</th></tr>
+          ${ACCOUNTS.map(a=>`
+          <tr>
+            <td class="col-title">${a.name}</td>
+            <td><span class="chip-mini">${a.vertical}</span></td>
+            <td><span class="tag ${a.role.includes('测试')||a.role==='实验域'?'info':'ok'}">${a.role}</span></td>
+            <td style="font-family:var(--mono)">${a.daily} 条</td>
+            <td><small>${a.win}</small></td>
+            <td><span class="tag ${a.st==='active'?'ok':'warn'}">${a.stTag}</span></td>
+          </tr>`).join("")}
+        </table>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn ghost" onclick="toast('演示：新建账号')">+ 新建账号</button>
+          <button class="btn ghost" onclick="toast('演示：批量复制矩阵')">复制矩阵</button>
+          <button class="btn ghost" onclick="toast('演示：导出配置')">导出配置</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <b style="font-size:13px">头条账号 · 后台域设置</b>
+        <div style="margin-top:8px;font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);letter-spacing:.06em">DOMAIN CONFIG</div>
+        <label style="display:block;margin:12px 0 6px;font-size:12px;color:var(--ink-dim)">绑定头条号</label>
+        <div class="chip-mini" style="display:block;padding:8px 10px">registrant@toutiao · 蓝鲸视野</div>
+        <label style="display:block;margin:12px 0 6px;font-size:12px;color:var(--ink-dim)">账号垂类</label>
+        <input class="chip-mini" style="display:block;width:100%;padding:8px 10px" value="科技数码">
+        <label style="display:block;margin:12px 0 6px;font-size:12px;color:var(--ink-dim)">内容偏好标签</label>
+        <input class="chip-mini" style="display:block;width:100%;padding:8px 10px" value="热点速递 · 新品测评 · 供应链">
+        <label style="display:block;margin:12px 0 6px;font-size:12px;color:var(--ink-dim)">人群实验分组</label>
+        <div class="chip-mini" style="display:block;padding:8px 10px">主域 · 无分流</div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn primary" onclick="saveAccount()">保存设置</button>
+          <button class="btn ghost" onclick="toast('演示：在 Demo 中不可真正生效')">恢复默认</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <b style="font-size:13px">多域测试 · 流量实验自动隔离</b>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;font-size:12.5px;color:var(--ink-dim);line-height:1.6">
+        <span>· 主域账号承载稳定垂类内容；测试域/实验域用于跑选题与形态实验，数据隔离、互不污染。</span>
+        <span>· 实验组自动圈定（如 HourTest 实验域×垂类实验），结论与建议动作自动回流到「数据回流」供运营确认。</span>
+        <span>· 域设置包含发布时间窗、日产量、内容偏好，一处配置即可下发给矩阵内账号自动执行。</span>
+      </div>
+    </div>`,
   "热点雷达": ()=>`
-    <div class="section-title">LIVE SIGNAL · ${HOTSPOTS.length} 个信号待评分</div>
+    <div class="section-title">LIVE SIGNAL · 自动采集运行中 · 累计 ${HOTSPOTS.length} 个活跃信号 / 今日 ${HOTSPOTS.length*37} 条</div>
     <div class="card radar-box" style="margin-bottom:16px">
       <div class="hot-top">
-        <span class="scan"><span class="ring"></span>雷达扫频中 …</span>
-        <button class="btn ghost" onclick="simNewSignal()">模拟信号 +</button>
+        <span class="scan"><span class="ring"></span>多源自动采集 · 去重 · 评分中 …</span>
+        <button class="btn ghost" onclick="simNewSignal()">模拟信号流入 +</button>
       </div>
-      <div class="meta" style="margin:0">排序依据：时效性 × 热度 × 垂类匹配 × 素材完整度。日志以热点为单位<b>点击「加入选题池」</b>进入聚类。</div>
+      <div style="display:flex;gap:22px;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);margin-top:4px;flex-wrap:wrap">
+        <span>接入源：新闻/RSS · X · 抖音热榜 · 垂直信息源</span>
+        <span style="color:var(--ok)">● 采集 249 → 去重 207 → 聚合 42</span>
+        <span style="color:var(--warn)">● 无人值守：无需人工录入与盯守</span>
+      </div>
+      <div class="meta" style="margin:12px 0 0">评分：时效 × 热度 × 增速 × 垂类匹配 × 素材完整度。<b>达标信号自动落入选题池</b>，运营无需介入。</div>
+      <div class="bar" style="margin-top:12px"><i style="width:40%;background:linear-gradient(90deg,#59a7ff,#59a7ff);animation:pulse 1.6s ease infinite"></i></div>
     </div>
-    <div class="grid g-hot">${HOTSPOTS.map(h=>`
+    <div class="grid g-hot">${HOTSPOTS.map((h,i)=>`
       <div class="card">
-        <div class="hot-top"><span class="chip-mini">${h.src}</span><span class="ts" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">${h.ts}</span></div>
+        <div class="hot-top"><span class="chip-mini">${h.src}</span>
+          <span class="ts" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">${h.ts}</span></div>
         <div class="score">${h.score}<small>/100 · 增速 <b class="rise">${h.rise}</b></small></div>
         <div class="meta">${h.title}</div>
         <div class="bar"><i style="width:${h.score}%;background:linear-gradient(90deg,#ffb020,#ffd27a)"></i></div>
         <div class="foot">
           <span class="chip-mini">垂类匹配 ${h.match}%</span>
-          <button class="btn primary" onclick="pick('${h.title}')">加入选题池</button>
+          <span class="tag ok" style="font-size:10px">● 自动聚合</span>
         </div>
       </div>`).join("")}
     </div>`,
-  /* —— 选题中心 —— */
+  /* —— 选题中心（自动触发生产） —— */
   "选题中心": ()=>`
-    <div class="section-title">EVENT CLUSTER · 已聚类事件 18 个，展示当日优先候选</div>
+    <div class="section-title">EVENT CLUSTER · 已聚类事件 18 个 · 合规素材匹配 → <b style="color:var(--accent)">自动触发生产</b></div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;gap:22px;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);flex-wrap:wrap">
+        <span style="color:var(--ok)">● 命中即自动转入生产引擎，无需人工启动</span>
+        <span>● 素材不足 → 自动入「素材等待队列」跨日重试</span>
+        <span>● 无有效媒体 → 规则4 暂缓并自动等待</span>
+      </div>
+    </div>
     <div class="grid g-topic">${TOPICS.map(e=>`
       <div class="card event">
         <div class="etop">
           <span class="tag ${e.rule==='规则2'?'warn':e.rule==='规则3'?'info':'ok'}">命中 ${e.rule}</span>
           <span class="chip-mini">${e.format}</span>
+          <span class="tag ok" style="margin-left:auto" onclick="toast('自动触发：已转入生产引擎（演示）')">已自动生产</span>
         </div>
         <h3>${e.title}</h3>
         <div class="meta">热度 ${e.score} · 垂类匹配 ${e.match}% · 素材 ${e.count} 条</div>
         <div class="rule" style="font-family:var(--mono);font-size:11px;color:var(--ink-dim)">判定说明：${e.ruleNote}
           ${e.density?` · 信息密度 ${e.density}`:''}</div>
         <div class="assets-line">${e.assets.map(a=>`<span class="chip-mini">${a}</span>`).join("")}
-          <button class="btn ghost" style="margin-left:auto;padding:6px 10px" onclick="toast('已将该事件推进到生产引擎（演示）')">→ 生产</button>
+          <button class="btn ghost" style="margin-left:auto;padding:6px 10px" onclick="toast('演示：可查看该事件的自动生产进度')">查看生产</button>
         </div>
       </div>`).join("")}
     </div>`,
@@ -489,6 +561,7 @@ function skip(i){ QUEUE[i].st="skipped"; toast("已跳过该条（演示）"); s
 function editTitle(i){ const t=prompt("修改标题（演示）：", QUEUE[i].title); if(t) QUEUE[i].title=t; show("待发布队列"); }
 function rescue(i){ toast("已从留档手动捞回（演示）"); }
 function undoSkip(i){ QUEUE[i].st="pending"; toast("已撤销跳过，重新回到待发布（演示）"); show("待发布队列"); }
+function saveAccount(){ toast("域设置已保存并下发到矩阵账号（演示）"); }
 
 /* ============ 启动 ============ */
 document.getElementById("today").textContent = new Date().toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit",weekday:"short"});
