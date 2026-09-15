@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# 测试/工具缓存
+.pytest_cache/
+.ruff_cache/
+
+# 本地数据（SQLite 等）
+*.db
+*.sqlite3

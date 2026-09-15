@@ -17,3 +17,8 @@
 ## D3 MVP 数据回流不做自动调参
 - 来源：产品设计文档 §4.7、§7。
 - MVP 仅输出“建议动作”，由运营人工确认；自动调参列入后续演进（单次调幅 ≤15%、观察期 7 天、一键回滚、仅对当前账号生效）。
+
+## D4 MVP 技术选型（2026-09-15 编码启动）
+- 语言/框架：Python + FastAPI；pytest + ruff。
+- 存储：SQLite（单文件，MVP 落库）；pydantic BaseModel 承载领域模型。
+- 代码结构：`app/models`（领域模型）、`app/pipeline`（业务管道，首个核心模块为 `format_decision.py` 形态决策）、`app/daos`（SQLite 持久化）、`app/api`（FastAPI 路由）、`tests/`。
