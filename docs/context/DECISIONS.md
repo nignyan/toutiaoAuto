@@ -28,3 +28,17 @@
 - 架构：统一定义 `PublishAdapter` 协议（`app/publish/adapter.py`），每个账号绑定 adapter 类型与独立浏览器 profile 目录（登录态隔离）；后续若取得 MCN 资质可插 API 适配器，上层队列不感知差异。
 - 风险已告知：平台风控、页面改版需维护选择器（集中在 `SELECTORS` 常量）、多账号同 IP 关联。
 - 演示前端：`demo/` 纯前端 + localStorage 状态；冒烟测试 `node demo/smoke.test.mjs`。
+
+## D6 采集数据源与触发策略（2026-09-15 用户拍板）
+- 策略 A：`SignalSource` 协议（与 PublishAdapter 同构）+ FixtureSource（测试/演示）+ **微博热搜**真实适配器（`weibo.com/ajax/side/hotSearch`，免登录公开 JSON）。X 需付费、抖音热榜需抓包对抗风控，均不进 MVP。
+- 触发：API 端点 `POST /pipeline/collect`；调度逻辑写成可复用函数，定时轮询留后续薄封装。
+- 容错：单源失败不影响其他源，记录 SourceStatus；采集记录不落库（范围外）。
+
+## D7 事件聚类口径（2026-09-15 用户拍板）
+- 算法：标题字符 bigram 集合的 **Jaccard 相似度 ≥ 0.35**（参数可配）并入事件；零新依赖，jieba 分词与语义向量均不采用。
+- 评分：MVP `Event.score` = 归一化热度 0–100（微博 num 按批次 min-max 归一，极差为 0 取 50），并入取 max；加权评分模型留后续迭代。
+
+## D8 素材来源与密度取值边界（2026-09-15 用户拍板）
+- 素材双入口：① FixtureSource 信号自带模拟素材（模拟算法已识别属性）；② `ingest_asset` 手动补录。真实源事件无素材 → 命中规则 4 → DEFERRED 素材等待队列。
+- 信息密度/清晰度在**入库时落库**，值由调用方提供（fixture 模拟算法结果 / 人工标注）；未来接视觉模型只替换取值来源，数据流不变。不做启发式估算（纯文本信号估不出真实密度，假精度）。
+- 架构采用方案一：pipeline 纯函数 + 瘦 DAO + API 薄封装（同步），不引入进程内事件总线。规格见 `docs/specs/2026-09-15_热点采集聚类素材入库_设计文档.md`。
