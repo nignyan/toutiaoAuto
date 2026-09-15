@@ -22,3 +22,9 @@
 - 语言/框架：Python + FastAPI；pytest + ruff。
 - 存储：SQLite（单文件，MVP 落库）；pydantic BaseModel 承载领域模型。
 - 代码结构：`app/models`（领域模型）、`app/pipeline`（业务管道，首个核心模块为 `format_decision.py` 形态决策）、`app/daos`（SQLite 持久化）、`app/api`（FastAPI 路由）、`tests/`。
+
+## D5 真实头条账号接入方案（2026-09-15 用户拍板）
+- 结论：头条号无个人开放的发布 API，采用 **Playwright RPA 填草稿箱**方案：自动化把内容包填进投稿草稿箱，用户手动点发布；**自动发布（auto_publish）做成账号级开关，默认关闭**。
+- 架构：统一定义 `PublishAdapter` 协议（`app/publish/adapter.py`），每个账号绑定 adapter 类型与独立浏览器 profile 目录（登录态隔离）；后续若取得 MCN 资质可插 API 适配器，上层队列不感知差异。
+- 风险已告知：平台风控、页面改版需维护选择器（集中在 `SELECTORS` 常量）、多账号同 IP 关联。
+- 演示前端：`demo/` 纯前端 + localStorage 状态；冒烟测试 `node demo/smoke.test.mjs`。

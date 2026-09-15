@@ -20,6 +20,15 @@ def _new_id() -> str:
     return uuid4().hex
 
 
+class PublishChannel(str, Enum):
+    TOUTIAO = "toutiao"
+
+
+class PublishAdapterKind(str, Enum):
+    DRAFT = "draft"  # 只填草稿箱，人工点发布
+    # 预留：API = "api"（官方接口，需 MCN 资质）
+
+
 class Account(BaseModel):
     """头条账号配置。"""
 
@@ -30,4 +39,10 @@ class Account(BaseModel):
     publish_window_start: str = ""  # 发布时间窗口（HH:MM）
     publish_window_end: str = ""
     status: AccountStatus = AccountStatus.ACTIVE
+    channel: PublishChannel = PublishChannel.TOUTIAO
+    adapter: PublishAdapterKind = PublishAdapterKind.DRAFT
+    # 自动发布开关：默认关闭（只填草稿箱，人工点发布）；开启后适配器填完直接点发布
+    auto_publish: bool = False
+    # 该账号的浏览器持久化登录态目录（每账号独立，天然隔离）
+    profile_dir: str = ""
     created_at: str = Field(default_factory=_now)
