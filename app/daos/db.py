@@ -1,6 +1,7 @@
 """SQLite 连接管理与建表。业务 DAO 见 event_dao.py / asset_dao.py。"""
 
 import sqlite3
+import threading
 from pathlib import Path
 
 _SCHEMA = [
@@ -38,26 +39,41 @@ _SCHEMA = [
 
 
 class DB:
-    """极简 SQLite 连接封装。"""
+    """极简 SQLite 连接封装（单连接 + 线程锁，适配 FastAPI 线程池）。"""
 
     def __init__(self, path: str | Path) -> None:
         self._path = str(path)
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
 
     def connect(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self._path)
+            self._conn = sqlite3.connect(self._path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
     def migrate(self) -> None:
         """幂等建表，应用启动与测试夹具时调用。"""
-        conn = self.connect()
-        for ddl in _SCHEMA:
-            conn.execute(ddl)
-        conn.commit()
+        with self._lock:
+            conn = self.connect()
+            for ddl in _SCHEMA:
+                conn.execute(ddl)
+            conn.commit()
+
+    def run(self, sql: str, params: tuple = ()) -> None:
+        """原子写入：execute + commit 在锁内完成。"""
+        with self._lock:
+            conn = self.connect()
+            conn.execute(sql, params)
+            conn.commit()
+
+    def query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        """线程安全的只读查询。"""
+        with self._lock:
+            return self.connect().execute(sql, params).fetchall()
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None

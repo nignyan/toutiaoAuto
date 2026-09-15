@@ -49,7 +49,7 @@ class MediaAssetDao:
         self._db = db
 
     def insert(self, asset: MediaAsset) -> None:
-        self._db.connect().execute(
+        self._db.run(
             "INSERT OR REPLACE INTO media_assets"
             " (id, event_id, type, source_url, source_type, auth_status, auth_evidence,"
             "  license_business, attribution, clarity, info_density, duration_s,"
@@ -57,16 +57,13 @@ class MediaAssetDao:
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             _to_row(asset),
         )
-        self._db.connect().commit()
 
     def get(self, asset_id: str) -> MediaAsset | None:
-        row = self._db.connect().execute(
-            "SELECT * FROM media_assets WHERE id = ?", (asset_id,)
-        ).fetchone()
-        return _from_row(row) if row else None
+        rows = self._db.query("SELECT * FROM media_assets WHERE id = ?", (asset_id,))
+        return _from_row(rows[0]) if rows else None
 
     def list_by_event(self, event_id: str) -> list[MediaAsset]:
-        rows = self._db.connect().execute(
+        rows = self._db.query(
             "SELECT * FROM media_assets WHERE event_id = ? ORDER BY ingested_at", (event_id,)
-        ).fetchall()
+        )
         return [_from_row(r) for r in rows]

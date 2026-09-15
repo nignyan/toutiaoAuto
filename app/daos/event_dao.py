@@ -40,19 +40,16 @@ class EventDao:
 
     def upsert(self, event: Event) -> None:
         """整行覆盖写入（聚类编排层负责合并 timeline / score 后调用）。"""
-        self._db.connect().execute(
+        self._db.run(
             "INSERT OR REPLACE INTO events"
             " (id, title, summary, score, status, timeline_json, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
             _to_row(event),
         )
-        self._db.connect().commit()
 
     def get(self, event_id: str) -> Event | None:
-        row = self._db.connect().execute(
-            "SELECT * FROM events WHERE id = ?", (event_id,)
-        ).fetchone()
-        return _from_row(row) if row else None
+        rows = self._db.query("SELECT * FROM events WHERE id = ?", (event_id,))
+        return _from_row(rows[0]) if rows else None
 
     def list_all(self, status: EventStatus | None = None, limit: int | None = None) -> list[Event]:
         """按 score 降序返回事件，可按状态过滤。"""
@@ -65,5 +62,4 @@ class EventDao:
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)
-        rows = self._db.connect().execute(sql, params).fetchall()
-        return [_from_row(r) for r in rows]
+        return [_from_row(r) for r in self._db.query(sql, tuple(params))]
