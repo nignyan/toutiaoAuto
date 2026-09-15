@@ -20,12 +20,12 @@
 
 ## 源码（已落地，2026-09-15 校核）
 - `app/`：FastAPI 应用主包
-  - `models/`：事件、素材、产物、账号、发布队列（Pydantic 领域模型）
-  - `pipeline/`：业务管道（`format_decision.py` 形态决策；采集 / 聚类 / 素材入库待新增）
+  - `models/`：事件（含 timeline）、素材、产物、账号、发布队列（Pydantic 领域模型）
+  - `pipeline/`：业务管道——`format_decision.py` 形态决策、`collector.py` 采集（微博热搜真实源 + Fixture 模拟源，D6）、`clustering.py` bigram Jaccard 聚类（D7）、`asset_ingest.py` 素材入库（D8）
   - `publish/`：发布适配层（`adapter.py` 协议 + `toutiao_draft.py` 头条草稿箱 RPA + `cli.py` 登录/填充命令）
-  - `daos/`：SQLite 连接封装（表结构与业务 DAO 待实现）
-  - `api/` + `main.py`：FastAPI 路由（当前仅 `/health`）
-- `tests/`：pytest（形态决策 11 例 / 发布适配器 10 例 / API 1 例）
+  - `daos/`：SQLite 持久化（`db.py` 单连接 + threading.Lock；`event_dao.py` / `asset_dao.py`）
+  - `api/` + `main.py`：FastAPI 路由——`/health` + 管道 4 端点（`POST /pipeline/collect`、`GET /events`、`GET /events/{id}`、`POST /events/{id}/assets`）
+- `tests/`：pytest（形态决策 11 例 / 发布适配器 10 例 / DAO 8 例 / 采集 11 例 / 聚类 15 例 / 素材入库 6 例 / API 10 例，共 71 例）
 - `demo/`：运营工作台交互 Demo（纯前端 + localStorage，8 视图；`smoke.test.mjs` 冒烟 14 项）
 - `pyproject.toml`：依赖与工具配置（`dev` 测试组 / `rpa` Playwright 组）
 
