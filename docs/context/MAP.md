@@ -15,15 +15,16 @@
 - `RISKS.md`：风险与缓解。
 - `history/`：按月完成事项归档。
 
-## 源码（规划，未创建）
-计划顶层结构（MVP 采用 FastAPI 单服务）：
-- `app/`：应用主包
-  - `pipeline/`：热点采集、聚类、素材入库、形态决策、生产、质检
-  - `models/`：事件、素材、产物、账号、发布队列等数据模型
-  - `daos/`：SQLite 持久化
-  - `api/`：FastAPI 路由
-- `tests/`：pytest + ruff
-- `pyproject.toml`：依赖与工具配置
+## 源码（已落地，2026-09-15 校核）
+- `app/`：FastAPI 应用主包
+  - `models/`：事件、素材、产物、账号、发布队列（Pydantic 领域模型）
+  - `pipeline/`：业务管道（`format_decision.py` 形态决策；采集 / 聚类 / 素材入库待新增）
+  - `publish/`：发布适配层（`adapter.py` 协议 + `toutiao_draft.py` 头条草稿箱 RPA + `cli.py` 登录/填充命令）
+  - `daos/`：SQLite 连接封装（表结构与业务 DAO 待实现）
+  - `api/` + `main.py`：FastAPI 路由（当前仅 `/health`）
+- `tests/`：pytest（形态决策 11 例 / 发布适配器 10 例 / API 1 例）
+- `demo/`：运营工作台交互 Demo（纯前端 + localStorage，8 视图；`smoke.test.mjs` 冒烟 14 项）
+- `pyproject.toml`：依赖与工具配置（`dev` 测试组 / `rpa` Playwright 组）
 
 ## 发布/同步边界
 - 当前仅本地 Git；无远端、无发布配置。任何 push/Release 需另行授权。

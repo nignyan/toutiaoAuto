@@ -25,3 +25,4 @@
 - 合并个性化开发规范至 AGENTS.md。
 - 交互 Demo 重做并迁移至 demo/，提交 02ff63e。
 - 新增 app/publish/ 草稿箱适配器 + CLI + 10 项单测（pytest 22/22 通过）。
+- 同步 PROJECT_INDEX.md / MAP.md 至代码现状，修复索引落后于实现的文档漂移。
