@@ -28,9 +28,11 @@ def ingest_asset(db: DB, event: Event, asset: MediaAsset) -> IngestReport:
 
     decision = decide_format(asset_dao.list_by_event(event.id))
     changed = False
-    if event.status == EventStatus.DEFERRED and decision.content_format != ContentFormat.DEFER:
-        event.status = EventStatus.READY
-        EventDao(db).upsert(event)
-        changed = True
+    if event.status == EventStatus.DEFERRED:
+        event.deferred_retries += 1  # 等待期间补录尝试计数（「已重试 n 次」）
+        if decision.content_format != ContentFormat.DEFER:
+            event.status = EventStatus.READY
+            changed = True
+        EventDao(db).upsert(event)  # 计数与状态转换一次落库
 
     return IngestReport(asset=asset, decision=decision, event_status_changed=changed)

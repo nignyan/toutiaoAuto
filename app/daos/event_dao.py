@@ -17,6 +17,8 @@ def _to_row(event: Event) -> tuple:
         event.status.value,
         json.dumps([t.model_dump() for t in event.timeline], ensure_ascii=False),
         event.created_at,
+        event.deferred_at,
+        event.deferred_retries,
     )
 
 
@@ -29,6 +31,8 @@ def _from_row(row) -> Event:
         status=EventStatus(row["status"]),
         timeline=[TimelineEntry(**t) for t in json.loads(row["timeline_json"])],
         created_at=row["created_at"],
+        deferred_at=row["deferred_at"],
+        deferred_retries=row["deferred_retries"],
     )
 
 
@@ -37,8 +41,9 @@ class EventDao:
 
     _UPSERT_SQL = (
         "INSERT OR REPLACE INTO events"
-        " (id, title, summary, score, status, timeline_json, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)"
+        " (id, title, summary, score, status, timeline_json, created_at,"
+        " deferred_at, deferred_retries)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
 
     def __init__(self, db: DB) -> None:

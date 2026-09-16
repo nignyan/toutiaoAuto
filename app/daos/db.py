@@ -14,7 +14,9 @@ _SCHEMA = [
         score REAL NOT NULL DEFAULT 0,
         status TEXT NOT NULL,
         timeline_json TEXT NOT NULL DEFAULT '[]',
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        deferred_at TEXT NOT NULL DEFAULT '',
+        deferred_retries INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -93,6 +95,10 @@ _SCHEMA = [
 
 # 存量库补列迁移：CREATE TABLE IF NOT EXISTS 不会更新已存在的表
 _COLUMN_MIGRATIONS = {
+    "events": {
+        "deferred_at": "deferred_at TEXT NOT NULL DEFAULT ''",
+        "deferred_retries": "deferred_retries INTEGER NOT NULL DEFAULT 0",
+    },
     "production": {"vertical": "vertical TEXT NOT NULL DEFAULT ''"},
 }
 

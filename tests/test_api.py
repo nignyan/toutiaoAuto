@@ -1,5 +1,7 @@
 """应用健康检查与管道 API 测试。"""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -414,3 +416,32 @@ def test_enqueue_all_endpoint_ignores_non_qualified(api) -> None:
     body = client.post("/pipeline/enqueue/all").json()
     assert len(body["enqueued"]) == 1  # 仅 QUALIFIED 入队
     assert body["skipped"] == []
+
+
+# ---- 素材等待队列超时归档 ----
+
+def test_wait_queue_timeout_archives_expired_only(api) -> None:
+    now = datetime.now(timezone.utc)
+    dao = EventDao(api)
+    expired = Event(
+        title="过期等待事件",
+        status=EventStatus.DEFERRED,
+        deferred_at=(now - timedelta(hours=25)).isoformat(),
+    )
+    fresh = Event(
+        title="新鲜等待事件",
+        status=EventStatus.DEFERRED,
+        deferred_at=(now - timedelta(hours=1)).isoformat(),
+    )
+    dao.upsert(expired)
+    dao.upsert(fresh)
+
+    body = client.post("/pipeline/wait-queue/timeout").json()
+    assert [e["id"] for e in body["archived"]] == [expired.id]
+    assert body["checked"] == 2
+    assert dao.get(expired.id).status == EventStatus.ARCHIVED
+    assert dao.get(fresh.id).status == EventStatus.DEFERRED
+
+    again = client.post("/pipeline/wait-queue/timeout").json()
+    assert again["archived"] == []  # 重复调用幂等：已归档不再出现在等待队列
+    assert again["checked"] == 1

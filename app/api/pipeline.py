@@ -40,6 +40,7 @@ from app.pipeline.collector import (
 from app.pipeline.composer import ContentComposer, TemplateComposer
 from app.pipeline.format_decision import decide_format
 from app.pipeline.producer import ProducerError, produce_all, produce_for_event
+from app.pipeline.wait_queue import archive_expired
 
 router = APIRouter(tags=["pipeline"])
 
@@ -151,6 +152,11 @@ class EnqueueSkip(BaseModel):
 class EnqueueAllResponse(BaseModel):
     enqueued: list[PublishQueueItem]
     skipped: list[EnqueueSkip]
+
+
+class WaitQueueTimeoutResponse(BaseModel):
+    archived: list[Event]
+    checked: int  # 扫描的等待中事件数
 
 
 # ---- 端点 ----
@@ -345,6 +351,13 @@ def enqueue_all_endpoint(db: DB = Depends(get_db)) -> EnqueueAllResponse:
             for s in report.skipped
         ],
     )
+
+
+@router.post("/pipeline/wait-queue/timeout", response_model=WaitQueueTimeoutResponse)
+def wait_queue_timeout(db: DB = Depends(get_db)) -> WaitQueueTimeoutResponse:
+    """素材等待队列超时归档：超过 24 小时未凑齐有效素材的等待事件归档，不再尝试。"""
+    report = archive_expired(db)
+    return WaitQueueTimeoutResponse(archived=report.archived, checked=report.checked)
 
 
 @router.get("/publish-queue", response_model=list[PublishQueueItem])

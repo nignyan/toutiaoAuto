@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EventStatus(str, Enum):
@@ -44,3 +44,12 @@ class Event(BaseModel):
     status: EventStatus = EventStatus.READY
     timeline: list[TimelineEntry] = Field(default_factory=list)  # 并入信号的时间线
     created_at: str = Field(default_factory=_now)
+    deferred_at: str = ""  # 进入素材等待队列时间；DEFERRED 时必填（validator 兜底）
+    deferred_retries: int = Field(default=0, ge=0)  # 等待期间素材补录尝试次数
+
+    @model_validator(mode="after")
+    def _fill_deferred_at(self) -> "Event":
+        """进入素材等待队列时自动记录起点（显式传入的值不覆盖）。"""
+        if self.status == EventStatus.DEFERRED and not self.deferred_at:
+            self.deferred_at = _now()
+        return self
