@@ -264,14 +264,19 @@ def record_performance(db: DB, record: PerformanceRecord) -> PerformanceRecord:
     return persisted
 
 
-def analyze(db: DB) -> AnalysisReport:
-    """重算分析报告并重建待确认建议：pending 全量替换，已决策项保留作历史。"""
+def compute_report(db: DB) -> AnalysisReport:
+    """汇总当前表现数据并四维聚合（只读，供 GET 报告与 analyze 复用）。"""
     records = RefluxRecordDao(db).list()
     productions = {p.id: p for p in ProductionDao(db).list()}
     published_ats = {
         item.production_id: item.published_at for item in PublishQueueDao(db).list()
     }
-    report = build_report(records, productions, published_ats)
+    return build_report(records, productions, published_ats)
+
+
+def analyze(db: DB) -> AnalysisReport:
+    """重算分析报告并重建待确认建议：pending 全量替换，已决策项保留作历史。"""
+    report = compute_report(db)
     suggestions = generate_suggestions(report)
     sug_dao = RefluxSuggestionDao(db)
     with db.transaction() as conn:  # 重建原子：删旧 pending 与插新建议同事务

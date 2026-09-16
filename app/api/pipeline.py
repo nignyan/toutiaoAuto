@@ -12,6 +12,8 @@ from app.daos import (
     MediaAssetDao,
     ProductionDao,
     PublishQueueDao,
+    RefluxRecordDao,
+    RefluxSuggestionDao,
 )
 from app.models import (
     Account,
@@ -23,11 +25,15 @@ from app.models import (
     EventStatus,
     MediaAsset,
     MediaType,
+    PerformanceRecord,
     Production,
     PublishQueueItem,
     PublishStatus,
     QualityStatus,
+    RefluxSuggestion,
+    ReviewStatus,
     SourceType,
+    SuggestionStatus,
 )
 from app.pipeline.allocator import AllocationError, allocate_for_production, enqueue_all
 from app.pipeline.asset_ingest import ingest_asset
@@ -49,6 +55,14 @@ from app.pipeline.dispatcher import (
 )
 from app.pipeline.format_decision import decide_format
 from app.pipeline.producer import ProducerError, produce_all, produce_for_event
+from app.pipeline.reflux import (
+    AnalysisReport,
+    RefluxError,
+    analyze,
+    compute_report,
+    decide_suggestion,
+    record_performance,
+)
 from app.pipeline.wait_queue import archive_expired
 from app.publish.adapter import PublishAdapter
 from app.publish.toutiao_draft import ToutiaoDraftAdapter
@@ -182,6 +196,35 @@ class QueueItemUpdateRequest(BaseModel):
 
     title: str | None = None
     sort_key: int | None = None
+
+
+class RefluxRecordRequest(BaseModel):
+    """表现数据回填载荷（upsert，每成品一条取最新）。"""
+
+    production_id: str
+    exposure: int = Field(default=0, ge=0)
+    plays: int = Field(default=0, ge=0)
+    completion_rate: float = Field(default=0.0, ge=0.0, le=100.0)  # 百分比口径
+    interactions: int = Field(default=0, ge=0)
+    negative: int = Field(default=0, ge=0)
+    review_status: ReviewStatus = ReviewStatus.PENDING_REVIEW
+    review_note: str = ""
+
+
+class RefluxRecordView(BaseModel):
+    """表现记录 + 成品/发布上下文（列表展示用）。"""
+
+    record: PerformanceRecord
+    production_title: str = ""
+    production_type: str = ""
+    published_at: str = ""
+
+
+class AnalyzeResponse(BaseModel):
+    """分析报告 + 重建后的待确认建议。"""
+
+    report: AnalysisReport
+    suggestions: list[RefluxSuggestion]
 
 
 # ---- 端点 ----
@@ -475,3 +518,94 @@ def update_queue_item(
             queue_dao.update_sort_key_with(conn, item.id, body.sort_key)
 
     return queue_dao.get(item_id)  # type: ignore[return-value]
+
+
+# ---- 数据回流（规格 D15 §5：MVP 仅建议动作，不自动调参）----
+
+def _reflux_error(exc: RefluxError) -> HTTPException:
+    code = 404 if exc.kind == "not_found" else 409
+    return HTTPException(status_code=code, detail=str(exc))
+
+
+def _record_view(db: DB, record: PerformanceRecord) -> RefluxRecordView:
+    """表现记录附成品标题/形态与发布时刻（N+1 查询，MVP 数据量小可接受）。"""
+    prod = ProductionDao(db).get(record.production_id)
+    item = PublishQueueDao(db).get_by_production(record.production_id)
+    return RefluxRecordView(
+        record=record,
+        production_title=prod.title if prod else "",
+        production_type=prod.production_type.value if prod else "",
+        published_at=item.published_at if item else "",
+    )
+
+
+@router.post("/reflux/records", response_model=RefluxRecordView)
+def upsert_reflux_record(body: RefluxRecordRequest, db: DB = Depends(get_db)) -> RefluxRecordView:
+    """回填单成品表现数据（upsert 取最新）+ 平台审核状态。
+
+    200 落库记录；404 成品不存在；409 队列项非 published。
+    """
+    record = PerformanceRecord(**body.model_dump())
+    try:
+        persisted = record_performance(db, record)
+    except RefluxError as exc:
+        raise _reflux_error(exc) from exc
+    return _record_view(db, persisted)
+
+
+@router.get("/reflux/records", response_model=list[RefluxRecordView])
+def list_reflux_records(
+    limit: int = 50, db: DB = Depends(get_db)
+) -> list[RefluxRecordView]:
+    """表现记录列表（回填时间倒序，含成品上下文）。"""
+    return [_record_view(db, r) for r in RefluxRecordDao(db).list(limit=limit)]
+
+
+@router.post("/reflux/analyze", response_model=AnalyzeResponse)
+def reflux_analyze(db: DB = Depends(get_db)) -> AnalyzeResponse:
+    """重算四维分析并重建待确认建议（pending 全量替换，已决策项保留作历史）。"""
+    report = analyze(db)
+    suggestions = RefluxSuggestionDao(db).list(status=SuggestionStatus.PENDING)
+    return AnalyzeResponse(report=report, suggestions=suggestions)
+
+
+@router.get("/reflux/analysis", response_model=AnalysisReport)
+def reflux_analysis(db: DB = Depends(get_db)) -> AnalysisReport:
+    """只读分析报告（不重建建议，供前端轮询展示）。"""
+    return compute_report(db)
+
+
+@router.get("/reflux/suggestions", response_model=list[RefluxSuggestion])
+def list_reflux_suggestions(
+    status: SuggestionStatus | None = None,
+    db: DB = Depends(get_db),
+) -> list[RefluxSuggestion]:
+    """建议动作列表，可按状态过滤（创建时间倒序）。"""
+    return RefluxSuggestionDao(db).list(status=status)
+
+
+@router.post("/reflux/suggestions/{sug_id}/confirm", response_model=RefluxSuggestion)
+def confirm_reflux_suggestion(sug_id: str, db: DB = Depends(get_db)) -> RefluxSuggestion:
+    """采纳建议（pending → confirmed；MVP 仅记录采纳，不调整任何权重）。"""
+    try:
+        return decide_suggestion(db, sug_id, "confirm")
+    except RefluxError as exc:
+        raise _reflux_error(exc) from exc
+
+
+@router.post("/reflux/suggestions/{sug_id}/reject", response_model=RefluxSuggestion)
+def reject_reflux_suggestion(sug_id: str, db: DB = Depends(get_db)) -> RefluxSuggestion:
+    """驳回建议（pending → rejected，终态）。"""
+    try:
+        return decide_suggestion(db, sug_id, "reject")
+    except RefluxError as exc:
+        raise _reflux_error(exc) from exc
+
+
+@router.post("/reflux/suggestions/{sug_id}/rollback", response_model=RefluxSuggestion)
+def rollback_reflux_suggestion(sug_id: str, db: DB = Depends(get_db)) -> RefluxSuggestion:
+    """回滚已采纳建议（confirmed → pending，回到待确认可再采纳）。"""
+    try:
+        return decide_suggestion(db, sug_id, "rollback")
+    except RefluxError as exc:
+        raise _reflux_error(exc) from exc
