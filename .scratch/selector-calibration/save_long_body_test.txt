@@ -1,0 +1,9 @@
+== 已进入发布页（正文 348 字）==
+  [footer t=3s] 草稿保存中...
+== 草稿列表直查 ==
+  {"code":0,"draft_list":[],"message":"success"}
+== 保存 API 响应 ==
+  https://mp.toutiao.com/mp/agw/article/publish?source=mp&type=article&aid=1231&mp_publish_ab_val=0&msToken=DnDK3LdnC8WVGPtO-GQFqcssIjZJaMEMR_
+  响应体: {"code":7050,"data":{"pgc_id":"0"},"err_no":7050,"message":"保存失败","now":1789568454,"reason":"保存失败"}
+== 结论 ==
+✘ 长正文仍 7050 保存失败 → 排除内容过短，转向风控/环境/账号维度

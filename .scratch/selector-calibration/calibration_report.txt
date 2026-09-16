@@ -1,0 +1,57 @@
+== ① 首页登录入口探测 ==
+URL: https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==
+
+[login_entry（首页，未登录时才出现）]
+  MISS  text=登录/注册  命中 0 处
+  HIT   text=登录  命中 11 处
+  HIT   button:has-text('登录')  命中 1 处
+  HIT   a:has-text('登录')  命中 1 处
+
+== ② 等待人工操作 ==
+请在浏览器中完成登录，并手动进入「图文发布」页；检测到后自动继续…
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/auth/page/login?redirect_url=JTJGcHJvZmlsZV92NCUyRg==']
+  …等待中，当前标签页: ['https://mp.toutiao.com/profile_v4/index']
+
+== ③ 发布页探测 ==
+实际发布页 URL（article_publish_url 校准值）: https://mp.toutiao.com/profile_v4/graphic/publish
+
+[title_input（发布页标题框）]
+  HIT   textarea[placeholder*='标题']  命中 1 处  placeholder='请输入文章标题（2～30个字）'
+  MISS  input[placeholder*='标题']  命中 0 处
+  HIT   div[class*='title'] textarea  命中 1 处
+  MISS  div[class*='title'] input  命中 0 处
+
+[body_editor（发布页正文编辑器）]
+  HIT   div[contenteditable='true']  命中 1 处
+  HIT   .ProseMirror  命中 1 处
+  MISS  .ql-editor  命中 0 处
+  HIT   [class*='editor'] [contenteditable='true']  命中 1 处
+
+[tag_input（发布页标签输入）]
+  MISS  input[placeholder*='标签']  命中 0 处
+  MISS  input[placeholder*='添加']  命中 0 处
+
+[save_draft_btn（存草稿按钮，只探测不点击）]
+  MISS  button:has-text('存草稿')  命中 0 处
+  MISS  text=存草稿  命中 0 处
+
+[publish_btn（发布按钮，只探测不点击）]
+  HIT   button:has-text('发布')  命中 2 处
+  MISS  button:has-text('发表')  命中 0 处
+
+[正文写入方式实测]
+  fill 方式可用: div[contenteditable='true']（编辑器共 1 处）
+
+== 探测完成（未点击任何保存/发布按钮）==

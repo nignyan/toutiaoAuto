@@ -14,3 +14,6 @@ build/
 # 本地数据（SQLite 等）
 *.db
 *.sqlite3
+
+# RPA 浏览器持久化 profile（含登录态/cookie，禁止入库）
+.profiles/
