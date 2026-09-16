@@ -5,8 +5,8 @@ import sqlite3
 import pytest
 
 from app.daos import (
-    AccountDao,
     DB,
+    AccountDao,
     EventDao,
     MediaAssetDao,
     ProductionDao,
