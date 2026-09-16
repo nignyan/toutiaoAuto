@@ -90,3 +90,11 @@
 - 账号删除守卫由「存在 pending」扩为「存在 pending 或 draft_ready」（草稿待发布仍占用账号）。
 - 审核状态/素材来源回流（产品 §4.6）属数据回流迭代（§4.7），本迭代不做。
 - 工程教训：`DB.transaction()` 持有非重入 `threading.Lock`，事务内不得调用 `db.run/query`（会二次抢锁死锁），只能用 `*_with(conn)` 原生 execute——PATCH 端点曾因此死锁，预检移到事务外修复。
+
+## D14 存草稿真机校准与 CDP 路线（2026-09-16 用户拍板）
+- 根因（探针 v4 系列取证，证据存档 `.scratch/selector-calibration/`）：存草稿失败不是选择器问题——图文页保存 API `POST /mp/agw/article/publish` 在 launch_persistent_context 的 Chromium 自动化指纹下恒返回 `err_no=7050 保存失败`（fill 自动填 7050、人工手输 7050 ×4、348 字长文 7050，草稿箱始终为空）；同一内容经 CDP 连接用户真实 Chrome 实测 `err_no=0` 保存成功且草稿箱可见（探针 v5，pgc_id 落库）。
+- 拍板：走「CDP 路线 A」——适配器 `connect_over_cdp` 接管用户真实 Chrome（`--remote-debugging-port=9222` + 专用 user-data-dir，Chrome 136+ 禁止默认 profile 开调试端口）；profile 模式（launch_persistent_context）降级为遗留兜底，不再用于存草稿主链路。
+- CDP 语义：优先复用已打开的头条标签页，退出仅关闭本进程新建的标签页；`browser.close()` 仅断开 CDP 连接、不杀用户浏览器进程；进入页面统一 `goto` 头条首页（未登录 302 到 /auth/** 作登录检测信号）。
+- 配置接线：构造器 `cdp_endpoint`；CLI `--cdp-endpoint`（留空回读环境变量 `TOUTIAO_CDP_ENDPOINT`）；API 工厂 `get_adapter` 同样回读该环境变量；两种测试注入（`browser_factory`/`cdp_browser_factory`）互不影响。
+- 图文选择器 5 键已真机校准（登录入口按钮 / 图文发布页 URL / 标题 textarea / 正文 .ProseMirror / 「预览并发布」消歧），集中在 `SELECTORS`；视频链路、tag、存草稿按钮仍为占位（MVP 出界）。
+- 遗留清理：探针草稿（校准探测 v4/v4c/v4d/v5 等）需人工在头条草稿箱删除；探针脚本 `scripts/calibrate_*.py` 为一次性工具，用后可删。

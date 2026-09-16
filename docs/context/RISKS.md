@@ -12,6 +12,9 @@
 | 署名素材级从严否决 | 任一 usable 素材缺 attribution 即整成品 BLOCKED，可能推高拦截率、加剧产出不足 | D12 保持从严（合规底线不得降级）；观察实际 BLOCKED 率，素材级剔除列演进项 |
 | 素材等待队列膨胀 | 失去时效、队列无限增长 | 等待窗口跨日 24 小时；超时归档停止尝试 |
 | 派发内容包不含媒体文件 | 头条草稿只有标题/正文/标签，视频/图集成片缺位，草稿不可直接发布成片 | D13 接受：素材均为远程 URL 无本地文件，媒体上传列演进项（素材本地化 + 选择器校准前置）；文字包先行验证通道 |
-| RPA 选择器未真机校准 | 派发到真实头条后台大概率失败（SELECTORS 为占位） | 派发结果容错落库（failed + 原因可重试）；真机校准为下一里程碑（头条后台选择器实测校准） |
+| 视频链路选择器未校准 | 视频/图集成片派发仍会失败（video_upload/save_draft_btn 为占位） | MVP 图文先行（内容包 ARTICLE-only，D13）；视频链路校准列演进项，且以素材本地化为前置 |
+| 平台风控识别自动化环境（保存 API err_no=7050） | profile 模式（launch_persistent_context）存草稿恒失败，D14 实证 | D14 拍板 CDP 路线 A：接管用户真实 Chrome（探针 v5 实测 err_no=0）；保存失败仍容错落库 failed 可重试；指纹策略再变需重新探针取证 |
+| CDP 专用 profile 与日常 Chrome 登录态不互通；Chrome 136+ 禁止默认 profile 开调试端口 | 用户在默认 Chrome 开端口失败，或专用 profile 未登录导致派发 NEEDS_LOGIN | 专用 user-data-dir（`.profiles/cdp_chrome`）+ 启动命令进 RUNBOOK；login 命令先检测登录态再引导；`.profiles/` 已入 .gitignore（登录态不入库） |
+| CDP 派发在用户真实浏览器中打开页面填稿 | 干扰用户正在进行的操作（复用/新建标签页、goto 跳转） | 单条派发需人工监督（D13）；适配器退出仅关新建页并断连、不杀浏览器进程（D14）；派发避开用户使用时段 |
 | 事务内二次抢锁死锁 | `db.transaction()` 持非重入锁时调用 `db.run/query` 永久阻塞 | D13 教训：事务内只用 `*_with(conn)` 原生 execute，预检移到事务外（见 DECISIONS D13） |
 | 上下文记忆/项目记录失散 | 后续模型接手成本高、token 浪费 | 按 AGENTS.md 分层记忆、按需读取、单一权威来源、换窗更新 NOW.md |

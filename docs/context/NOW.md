@@ -3,8 +3,8 @@
 > 最后更新：2026-09-16
 
 ## 当前阶段
-- 「发布执行」后端已落地（决策 D13，口径见 `DECISIONS.md`，规格见 `docs/specs/2026-09-16_发布执行_设计文档.md`，需求源产品设计 §4.6）：队列状态机新增 draft_ready；RPA 派发联动（build_package 图文内容包 + 适配器结果容错落库）；跳过/撤销/人工确认/行内改标题/排序调整全量对齐 §4.6；账号删除守卫扩展至 draft_ready。
-- 下一步：头条后台选择器真机校准（SELECTORS 为占位，见 RISKS）；数据回流（§4.7）在其后。
+- 「头条后台真机校准」闭环（D14，口径见 `DECISIONS.md`）：存草稿失败根因确认为自动化指纹风控（保存 API 恒 err_no=7050），拍板 CDP 路线——适配器 `connect_over_cdp` 接管用户真实 Chrome，探针 v5 实测 err_no=0 且草稿箱可见；图文选择器 5 键校准完成。
+- 下一步：数据回流（§4.7，MVP 仅建议动作）。
 
 ## 活动里程碑
 - [x] 产品设计定稿（2026-09-15）
@@ -18,14 +18,14 @@
 - [x] 账号自动分配 + 待发布队列入队（后端：allocator + 7 端点，2026-09-16）
 - [x] 素材等待队列超时归档（后端：wait_queue + 1 端点，2026-09-16）
 - [x] 发布执行（后端：dispatcher + 6 端点，队列 draft_ready 状态机 + sort_key，2026-09-16）
-- [ ] 头条后台选择器实测校准
+- [x] 头条后台选择器实测校准 + 存草稿 CDP 路线（2026-09-16）
 - [ ] 数据回流（§4.7，MVP 仅建议动作）
 
 ## 主要阻塞
-- 无（真机校准需用户提供头条账号环境，属外部依赖）。
+- 无。
 
 ## 最近闭环摘要
-- 发布执行闭环（D13）：5 批提交（规格 → 模型/DAO → dispatcher → API → 文档/demo）；队列状态机 pending/draft_ready/published/skipped/failed + sort_key 排序；派发仅 pending/failed、适配器异常与失败容错落库；demo 队列视图同步两段式发布（填草稿箱 → 头条后台点发布 → 回系统确认）。
-- 验证：pytest 211 例全绿（新增 36）、ruff 零违规、demo 冒烟 14/14。提交哈希见 `history/2026-09.md`。
-- 工程教训（D13）：`DB.transaction()` 持非重入锁，事务内调用 `db.run/query` 会死锁，只用 `*_with(conn)`；已记 RISKS.md。
+- 真机校准闭环（D14）：探针 v4 系列网络取证定位根因（自动化指纹触发保存 API err_no=7050，与选择器/内容长度/填法无关），用户拍板 CDP 路线 A；适配器新增 CDP 模式（复用已开头条标签页、退出仅关本进程新建页、`browser.close()` 仅断连不杀用户浏览器），CLI `--cdp-endpoint` / 环境变量 `TOUTIAO_CDP_ENDPOINT` / API `get_adapter` 三处接线；探针 v5 验证 err_no=0 + pgc_id + 草稿箱可见。证据存档 `.scratch/selector-calibration/`。
+- 验证：pytest 221 例全绿（本批新增 6：CDP 模式 4 + get_adapter 接线 2）、ruff 零违规。
+- 工程教训（D14）：登录态检测以 URL 为最硬信号（未登录 302 到 /auth/**）；「草稿保存中...」footer 指示 30s+ 不翻转，不是可靠完成信号，填稿后固定等待 + 人工草稿箱确认。
 - 完成项明细见 `history/2026-09.md`。
