@@ -84,6 +84,7 @@ _SCHEMA = [
         status TEXT NOT NULL DEFAULT 'pending',
         scheduled_for TEXT NOT NULL DEFAULT '',
         publish_result TEXT NOT NULL DEFAULT '',
+        sort_key INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     )
     """,
@@ -100,6 +101,7 @@ _COLUMN_MIGRATIONS = {
         "deferred_retries": "deferred_retries INTEGER NOT NULL DEFAULT 0",
     },
     "production": {"vertical": "vertical TEXT NOT NULL DEFAULT ''"},
+    "publish_queue": {"sort_key": "sort_key INTEGER NOT NULL DEFAULT 0"},
 }
 
 

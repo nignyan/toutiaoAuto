@@ -77,6 +77,12 @@ class ProductionDao:
             "UPDATE production SET account_id = ? WHERE id = ?", (account_id, production_id)
         )
 
+    def update_title(self, production_id: str, title: str) -> None:
+        """行内改标题（发布工作台 PATCH 入口，单表原子写）。"""
+        self._db.run(
+            "UPDATE production SET title = ? WHERE id = ?", (title, production_id)
+        )
+
     def get(self, production_id: str) -> Production | None:
         rows = self._db.query("SELECT * FROM production WHERE id = ?", (production_id,))
         return _from_row(rows[0]) if rows else None

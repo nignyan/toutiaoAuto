@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class PublishStatus(str, Enum):
     PENDING = "pending"  # 待发布
+    DRAFT_READY = "draft_ready"  # 草稿箱已填好，等待人工在头条后台点发布
     PUBLISHED = "published"
     SKIPPED = "skipped"
     FAILED = "failed"
@@ -31,4 +32,6 @@ class PublishQueueItem(BaseModel):
     status: PublishStatus = PublishStatus.PENDING
     scheduled_for: str = ""
     publish_result: str = ""
+    # 排序键：默认 0 退化为入队序（FIFO）；行内调整后按值升序，同值仍按入队序
+    sort_key: int = 0
     created_at: str = Field(default_factory=_now)

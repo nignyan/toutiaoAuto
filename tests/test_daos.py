@@ -233,6 +233,14 @@ def test_production_update_account_with(production_dao, db) -> None:
     assert production_dao.get(p.id).account_id == "acc1"
 
 
+def test_production_update_title(production_dao) -> None:
+    p = _production()
+    production_dao.insert(p)
+
+    production_dao.update_title(p.id, "运营改后的标题")
+    assert production_dao.get(p.id).title == "运营改后的标题"
+
+
 # ---- 存量库迁移 ----
 
 _LEGACY_PRODUCTION_DDL = """
@@ -272,6 +280,39 @@ def test_migrate_adds_vertical_to_legacy_production_db(tmp_path) -> None:
     loaded = ProductionDao(d).get("p1")
     assert loaded is not None
     assert loaded.vertical == ""  # 补列默认值，旧行存活
+    d.migrate()  # 二次迁移幂等
+
+
+_LEGACY_PUBLISH_QUEUE_DDL = """
+CREATE TABLE IF NOT EXISTS publish_queue (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    production_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    scheduled_for TEXT NOT NULL DEFAULT '',
+    publish_result TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+)
+"""
+
+
+def test_migrate_adds_sort_key_to_legacy_publish_queue_db(tmp_path) -> None:
+    path = tmp_path / "legacy_q.db"
+    conn = sqlite3.connect(path)
+    conn.execute(_LEGACY_PUBLISH_QUEUE_DDL)
+    conn.execute(
+        "INSERT INTO publish_queue (id, account_id, production_id, created_at)"
+        " VALUES ('q1', 'acc1', 'p1', '2026-09-15T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    d = DB(path)
+    d.migrate()
+    loaded = PublishQueueDao(d).get("q1")
+    assert loaded is not None
+    assert loaded.sort_key == 0  # 补列默认值，旧行存活且列表仍可排序
+    assert [i.id for i in PublishQueueDao(d).list()] == ["q1"]
     d.migrate()  # 二次迁移幂等
 
 
@@ -399,3 +440,47 @@ def test_queue_count_for_account_with_status(queue_dao) -> None:
     assert queue_dao.count_for_account("acc1") == 2
     assert queue_dao.count_for_account("acc1", status=PublishStatus.PENDING) == 1
     assert queue_dao.count_for_account("acc2") == 0
+
+
+# ---- PublishQueueDao：发布执行扩展（D13）----
+
+def test_queue_roundtrip_preserves_sort_key_and_draft_ready(queue_dao) -> None:
+    item = _queue_item(sort_key=20, status=PublishStatus.DRAFT_READY, publish_result="[x] y")
+    queue_dao.insert(item)
+
+    assert queue_dao.get(item.id) == item  # 含 sort_key / draft_ready 全字段往返
+
+
+def test_queue_update_status_keeps_result_when_none(queue_dao) -> None:
+    item = _queue_item(publish_result="[draft_ready] 草稿箱已填好")
+    queue_dao.insert(item)
+
+    queue_dao.update_status(item.id, PublishStatus.SKIPPED)
+    loaded = queue_dao.get(item.id)
+    assert loaded.status == PublishStatus.SKIPPED
+    assert loaded.publish_result == "[draft_ready] 草稿箱已填好"  # 跳过不改写派发记录
+
+
+def test_queue_update_status_overwrites_result(queue_dao) -> None:
+    item = _queue_item()
+    queue_dao.insert(item)
+
+    queue_dao.update_status(item.id, PublishStatus.FAILED, publish_result="[failed] 上传超时")
+    loaded = queue_dao.get(item.id)
+    assert loaded.status == PublishStatus.FAILED
+    assert loaded.publish_result == "[failed] 上传超时"
+
+
+def test_queue_update_sort_key_reorders_list(queue_dao) -> None:
+    a = _queue_item(production_id="p1")
+    b = _queue_item(production_id="p2")
+    c = _queue_item(production_id="p3")
+    for item in (a, b, c):
+        queue_dao.insert(item)
+
+    queue_dao.update_sort_key(b.id, -5)  # 负值排最前
+    queue_dao.update_sort_key(a.id, 10)
+    assert [i.production_id for i in queue_dao.list()] == ["p2", "p3", "p1"]
+
+    queue_dao.update_sort_key(b.id, 10)  # 同键回退入队序
+    assert [i.production_id for i in queue_dao.list()] == ["p3", "p1", "p2"]

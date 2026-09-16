@@ -3,8 +3,8 @@
 from app.daos.db import DB
 from app.models import PublishQueueItem, PublishStatus
 
-# 队列按入队顺序投递（FIFO）
-_SORT_SQL = "ORDER BY created_at ASC, id ASC"
+# 队列展示顺序：sort_key 升序（默认 0 退化为入队序 FIFO），同键按入队序稳定排列
+_SORT_SQL = "ORDER BY sort_key ASC, created_at ASC, id ASC"
 
 
 def _to_row(item: PublishQueueItem) -> tuple:
@@ -15,6 +15,7 @@ def _to_row(item: PublishQueueItem) -> tuple:
         item.status.value,
         item.scheduled_for,
         item.publish_result,
+        item.sort_key,
         item.created_at,
     )
 
@@ -27,6 +28,7 @@ def _from_row(row) -> PublishQueueItem:
         status=PublishStatus(row["status"]),
         scheduled_for=row["scheduled_for"],
         publish_result=row["publish_result"],
+        sort_key=row["sort_key"],
         created_at=row["created_at"],
     )
 
@@ -37,8 +39,9 @@ class PublishQueueDao:
     # 重复 production_id 由唯一索引拦截（不静默替换）
     _INSERT_SQL = (
         "INSERT INTO publish_queue"
-        " (id, account_id, production_id, status, scheduled_for, publish_result, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)"
+        " (id, account_id, production_id, status, scheduled_for, publish_result,"
+        "  sort_key, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
 
     def __init__(self, db: DB) -> None:
@@ -84,6 +87,25 @@ class PublishQueueDao:
             sql += " LIMIT ?"
             params.append(limit)
         return [_from_row(r) for r in self._db.query(sql, tuple(params))]
+
+    def update_status(
+        self, item_id: str, status: PublishStatus, publish_result: str | None = None
+    ) -> None:
+        """更新状态；publish_result 传 None 时保留原值（跳过/撤销不改写派发记录）。"""
+        if publish_result is None:
+            self._db.run(
+                "UPDATE publish_queue SET status = ? WHERE id = ?", (status.value, item_id)
+            )
+        else:
+            self._db.run(
+                "UPDATE publish_queue SET status = ?, publish_result = ? WHERE id = ?",
+                (status.value, publish_result, item_id),
+            )
+
+    def update_sort_key(self, item_id: str, sort_key: int) -> None:
+        self._db.run(
+            "UPDATE publish_queue SET sort_key = ? WHERE id = ?", (sort_key, item_id)
+        )
 
     def count_by_account_on(self, date_prefix: str) -> dict[str, int]:
         """指定日期（UTC created_at 前缀）各账号的队列条目数，用于当日配额核算。"""
