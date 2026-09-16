@@ -19,15 +19,16 @@
 - `2026-09-15_热点采集聚类素材入库_设计文档.md`：采集→聚类→素材入库迭代的功能规格（D6–D8）。
 - `2026-09-16_内容生产引擎_设计文档.md`：生产引擎 + 自动质检迭代的功能规格（D9）。
 - `2026-09-16_账号分配与发布队列_设计文档.md`：账号分配 + 待发布队列入队迭代的功能规格（D10）。
+- `2026-09-16_发布执行_设计文档.md`：队列状态流转 + RPA 派发联动 + 队列管理操作的功能规格（D13）。
 
 ## 源码（已落地，2026-09-16 校核）
 - `app/`：FastAPI 应用主包
-  - `models/`：事件（含 timeline、deferred_at/deferred_retries 等待队列字段）、素材、产物（Production 三态质检 + vertical）、账号（含 role 角色域）、发布队列（Pydantic 领域模型）
-  - `app/pipeline/`：业务管道——`format_decision.py` 形态决策、`collector.py` 采集（微博热搜真实源 + Fixture 模拟源，D6）、`clustering.py` bigram Jaccard 聚类（D7）、`asset_ingest.py` 素材入库（D8，等待队列重试计数）、`composer.py` 内容生成器协议 + 模板实现（D9）、`quality_check.py` 一票否决 + 质量分纯函数（D9）、`producer.py` 生产编排（D9，事务落库 + 批量容错）、`allocator.py` 账号分配与入队编排（D10，配额核算 + 批量容错）、`wait_queue.py` 素材等待队列超时归档（D11，纯函数 + 事务批量归档）
+  - `models/`：事件（含 timeline、deferred_at/deferred_retries 等待队列字段）、素材、产物（Production 三态质检 + vertical）、账号（含 role 角色域）、发布队列（Pydantic 领域模型；PublishStatus 五态 pending/draft_ready/published/skipped/failed + sort_key）
+  - `app/pipeline/`：业务管道——`format_decision.py` 形态决策、`collector.py` 采集（微博热搜真实源 + Fixture 模拟源，D6）、`clustering.py` bigram Jaccard 聚类（D7）、`asset_ingest.py` 素材入库（D8，等待队列重试计数）、`composer.py` 内容生成器协议 + 模板实现（D9）、`quality_check.py` 一票否决 + 质量分纯函数（D9）、`producer.py` 生产编排（D9，事务落库 + 批量容错）、`allocator.py` 账号分配与入队编排（D10，配额核算 + 批量容错）、`wait_queue.py` 素材等待队列超时归档（D11，纯函数 + 事务批量归档）、`dispatcher.py` 发布执行（D13，build_package 图文内容包 + 派发结果容错落库 + skip/unskip/confirm 状态流转）
   - `publish/`：发布适配层（`adapter.py` 协议 + `toutiao_draft.py` 头条草稿箱 RPA + `cli.py` 登录/填充命令）
-  - `daos/`：SQLite 持久化（`db.py` 单连接 + threading.Lock + transaction + 存量库补列迁移；`event_dao.py` / `asset_dao.py` / `production_dao.py` / `account_dao.py` / `publish_queue_dao.py`）
-  - `api/` + `main.py`：FastAPI 路由——`/health` + 管道 15 端点：采集/事件/素材补录 4（`POST /pipeline/collect`、`GET /events`、`GET /events/{id}`、`POST /events/{id}/assets`）+ 生产 3（`POST /pipeline/produce`、`POST /pipeline/produce/all`、`GET /productions`）+ 账号与队列 7（`POST /accounts`、`GET /accounts`、`PATCH /accounts/{id}`、`DELETE /accounts/{id}`、`POST /pipeline/enqueue`、`POST /pipeline/enqueue/all`、`GET /publish-queue`）+ 等待队列 1（`POST /pipeline/wait-queue/timeout`）
-- `tests/`：pytest（形态决策 11 / 发布适配器 10 / DAO 22 / 采集 11 / 聚类 15 / 素材入库 6 / composer 12 / 质检 15 / 生产编排 11 / 分配入队 17 / 等待队列归档 13 / API 32，共 175 例）
+  - `daos/`：SQLite 持久化（`db.py` 单连接 + threading.Lock + transaction + 存量库补列迁移【事务内禁止 run/query，只用 *_with(conn)】；`event_dao.py` / `asset_dao.py` / `production_dao.py`（含 update_title）/ `account_dao.py` / `publish_queue_dao.py`（含 update_status/update_sort_key））
+  - `api/` + `main.py`：FastAPI 路由——`/health` + 管道 21 端点：采集/事件/素材补录 4（`POST /pipeline/collect`、`GET /events`、`GET /events/{id}`、`POST /events/{id}/assets`）+ 生产 3（`POST /pipeline/produce`、`POST /pipeline/produce/all`、`GET /productions`）+ 账号与队列 7（`POST /accounts`、`GET /accounts`、`PATCH /accounts/{id}`、`DELETE /accounts/{id}`、`POST /pipeline/enqueue`、`POST /pipeline/enqueue/all`、`GET /publish-queue`）+ 等待队列 1（`POST /pipeline/wait-queue/timeout`）+ 发布执行 6（`POST /publish-queue/{id}/publish|skip|unskip|confirm`、`PATCH /publish-queue/{id}`，adapter 经 get_adapter 依赖注入）
+- `tests/`：pytest（形态决策 11 / 发布适配器 10 / DAO 28 / 采集 11 / 聚类 15 / 素材入库 6 / composer 12 / 质检 15 / 生产编排 11 / 分配入队 17 / 等待队列归档 13 / 发布执行 19 / API 43，共 211 例）
 - `demo/`：运营工作台交互 Demo（纯前端 + localStorage，8 视图；`smoke.test.mjs` 冒烟 14 项）
 - `pyproject.toml`：依赖与工具配置（`dev` 测试组 / `rpa` Playwright 组）
 

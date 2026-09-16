@@ -52,6 +52,10 @@ VIEWS["待发布队列"] = function () {
                 <button class="btn sm ghost" onclick="A.skipQ('${q.id}')">跳过</button>
                 <button class="btn sm primary" onclick="A.askPublish('${q.id}')">提交发布</button>
               </div>` : ""}
+            ${q.status === "draft_ready" ? `
+              <span class="tag warn">草稿已填 · 待头条后台点发布</span>
+              <button class="btn sm ghost" style="margin-left:6px" onclick="A.askPublish('${q.id}')">重新填稿</button>
+              <button class="btn sm primary" onclick="A.confirmQ('${q.id}')">确认已发布</button>` : ""}
             ${q.status === "published" ? `<span class="tag ok">✓ 已发布</span> <small style="color:var(--ink-dim)">${q.publishedAt ? fmtClock(q.publishedAt) : ""}</small>` : ""}
             ${q.status === "skipped" ? `<span class="tag danger">已跳过</span> <button class="btn sm ghost" style="margin-left:6px" onclick="A.undoSkip('${q.id}')">撤销跳过</button>` : ""}
           </td>
@@ -107,37 +111,51 @@ A.undoSkip = function (id) {
   Store.save(); App.softRefresh(true);
 };
 
-/* 发布：二次确认弹窗 → 真实改状态 */
+/* 发布两段式（与后端 D13 状态机同口径）：
+ * 提交发布 → 模拟 RPA 填稿（pending → draft_ready）→ 头条后台人工点发布 → 回系统确认（draft_ready → published） */
 A.askPublish = function (id) {
   const q = Q.queueItem(id);
   const p = q && Q.production(q.productionId);
   const acc = q && Q.account(q.accountId);
   if (!p || !acc) return;
+  const refilling = q.status === "draft_ready";
   App.modal(`
-    <h2>确认发布</h2>
+    <h2>${refilling ? "重新填稿" : "提交发布"}</h2>
     <div class="dblock">
       <div class="kv"><span>账号</span><b>${acc.name}（${acc.vertical}）</b></div>
       <div class="kv"><span>标题</span><b style="max-width:300px;text-align:right">${p.title}</b></div>
       <div class="kv"><span>形态</span><b>${p.typeName} · ${p.rule}</b></div>
       <div class="kv"><span>质量分</span><b style="font-family:var(--mono)">${p.quality.score}</b></div>
     </div>
-    <p class="meta" style="margin-bottom:14px">演示环境不真正调用头条发布接口；确认后本条状态流转为「已发布」并计入数据回流。</p>
+    <p class="meta" style="margin-bottom:14px">演示环境不真正调用头条接口：确认后模拟 RPA 将标题/正文填入头条投稿草稿箱，本条变为「草稿已填」；你在头条后台人工点发布后，回这里点「确认已发布」完成记录。发布是全流水线唯一人工动作。</p>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn ghost" onclick="A.closeModal()">再想想</button>
-      <button class="btn primary" onclick="A.confirmPublish('${id}')">确认发布</button>
+      <button class="btn primary" onclick="A.confirmPublish('${id}')">${refilling ? "重新填稿" : "填入草稿箱"}</button>
     </div>`);
 };
 A.confirmPublish = function (id) {
   const q = Q.queueItem(id);
   const p = q && Q.production(q.productionId);
   const acc = q && Q.account(q.accountId);
-  if (!q || q.status !== "pending") return;
+  if (!q || (q.status !== "pending" && q.status !== "draft_ready")) return;
+  q.status = "draft_ready";
+  q.publishedAt = null;
+  log("publish", `「${p.title.slice(0, 16)}…」已模拟填入「${acc.name}」投稿草稿箱，等待人工点发布`);
+  Store.save();
+  App.closeModal();
+  App.toast(`草稿已填入「${acc.name}」（模拟），请在头条后台点发布`);
+  App.softRefresh(true);
+};
+A.confirmQ = function (id) {
+  const q = Q.queueItem(id);
+  const p = q && Q.production(q.productionId);
+  const acc = q && Q.account(q.accountId);
+  if (!q || q.status !== "draft_ready") return;
   q.status = "published";
   q.publishedAt = nowMs();
   Store.state.stats.published++;
   log("publish", `「${p.title.slice(0, 16)}…」已由运营确认发布至「${acc.name}」`);
   Store.save();
-  App.closeModal();
   App.toast(`已发布到「${acc.name}」（模拟）`);
   App.softRefresh(true);
 };

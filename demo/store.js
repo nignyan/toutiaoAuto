@@ -63,7 +63,8 @@ const Q = {
     .filter(q => q.accountId === accId)
     .sort((a, b) => a.order - b.order),
   accountUsage: accId => Store.state.queue
-    .filter(q => q.accountId === accId && (q.status === "pending" || q.status === "published")).length,
+    .filter(q => q.accountId === accId
+      && (q.status === "pending" || q.status === "draft_ready" || q.status === "published")).length,
 };
 
 /* ---- 规则评估：与后端 app/pipeline/format_decision.py 同口径（§5） ---- */
@@ -147,6 +148,7 @@ const PROD_STATUS = {
 };
 const QUEUE_STATUS = {
   pending: { label: "待发布", cls: "info" },
+  draft_ready: { label: "草稿已填", cls: "warn" },
   published: { label: "已发布", cls: "ok" },
   skipped: { label: "已跳过", cls: "danger" },
 };

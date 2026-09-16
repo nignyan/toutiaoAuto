@@ -78,3 +78,15 @@
 - 署名否决粒度：保持素材级从严（任一 usable 素材无 attribution → 成品 BLOCKED）；「素材级剔除」列演进项，按实际 BLOCKED 率复盘。
 - 质量分语义错位：接受确定性均值公式；「形态判定看最好素材 vs 质检看平均素材」的错位记入 RISKS.md，观察期后按运营数据调权，按形态分公式列演进项。
 - 演进项显式暂不做（MVP）：多版本产出（§4.4）、重复事件/相似脚本/重复镜头检测、风险标签 + 待确认队列、标题与脚本一致性检查（模板生成构造性一致，仅对 LLM 实现有意义）、LLM composer（协议已预留）；引用比例超限维持「假检查不实现」（D9）。
+
+## D13 发布执行口径（2026-09-16 用户拍板）
+- 范围：队列状态流转 + RPA 填稿联动 + 队列管理操作全量对齐产品 §4.6（预览/行内改标题/调整排序/跳过可撤销/提交发布）；规格见 `docs/specs/2026-09-16_发布执行_设计文档.md`。
+- 状态机：队列 `PublishStatus` 新增 `draft_ready`（草稿箱已填，等待人工在头条后台点发布）；`pending → 派发 → draft_ready（auto_publish=False）/ published（auto_publish=True）/ failed →（重试）`；`draft_ready → 人工确认 → published`；`skipped ⇄ pending`。
+- 派发守卫：仅 `pending/failed` 可派发（failed 可重试；draft_ready 拒绝避免重复草稿；skipped 需先撤销）；适配器 `NEEDS_LOGIN/FAILED` 均映射 `failed`，原因记入 `publish_result`（格式 `[适配器状态] 消息`）；适配器异常（未装 Playwright 等）容错落库不冒泡；适配器失败也是 200（结果落库）。
+- 内容包：`build_package` 按图文形态只填标题/正文/标签——素材均为远程 URL、无本地媒体文件，媒体上传列演进项（需素材本地化 + 选择器校准）；`tags` 无来源留空。
+- 排序：`publish_queue.sort_key`（默认 0 退化为 FIFO，向后兼容），列表按 `sort_key ASC, created_at ASC, id ASC`；PATCH 直接回写 sort_key，前端按展示序重排（如 10/20/30 留空隙）；配额核算不受影响（仍按 created_at UTC 日前缀，跳过/失败不释放）。
+- 行内改标题：PATCH 队列项落到 `production.title`（队列与成品 1:1）；改标题与排序跨表同事务。
+- 触发：仅 API 手动单条派发，无批量派发（RPA 每账号打开真实浏览器，需人工监督；沿用 D8/D9/D10 方案一）；派发时账号已暂停不拦截（暂停语义是「不再获得新分配」，D10）。
+- 账号删除守卫由「存在 pending」扩为「存在 pending 或 draft_ready」（草稿待发布仍占用账号）。
+- 审核状态/素材来源回流（产品 §4.6）属数据回流迭代（§4.7），本迭代不做。
+- 工程教训：`DB.transaction()` 持有非重入 `threading.Lock`，事务内不得调用 `db.run/query`（会二次抢锁死锁），只能用 `*_with(conn)` 原生 execute——PATCH 端点曾因此死锁，预检移到事务外修复。

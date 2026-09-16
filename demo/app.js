@@ -56,7 +56,7 @@ const App = {
       s.assets.length,
       s.tasks.filter(t => t.status === "running").length,
       s.productions.length,
-      s.queue.filter(q => q.status === "pending").length,
+      s.queue.filter(q => q.status === "pending" || q.status === "draft_ready").length,
       s.suggestions.filter(x => x.status === "pending").length,
     ];
     const cur = FLOW_INDEX[this.current];
@@ -66,7 +66,7 @@ const App = {
         <div class="track"></div><div class="lbl">${f}</div>
       </div>`).join("");
     // 导航计数徽标
-    const navCnt = { "热点雷达": s.signals.filter(x => x.status === "new").length, "待发布队列": s.queue.filter(q => q.status === "pending").length, "数据回流": s.suggestions.filter(x => x.status === "pending").length, "自动质检": s.productions.filter(p => p.status === "held" || p.status === "blocked").length };
+    const navCnt = { "热点雷达": s.signals.filter(x => x.status === "new").length, "待发布队列": s.queue.filter(q => q.status === "pending" || q.status === "draft_ready").length, "数据回流": s.suggestions.filter(x => x.status === "pending").length, "自动质检": s.productions.filter(p => p.status === "held" || p.status === "blocked").length };
     document.querySelectorAll("[data-cnt]").forEach(el => {
       const v = navCnt[el.dataset.cnt] || 0;
       el.textContent = v || "";
