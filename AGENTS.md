@@ -61,3 +61,17 @@
 - 当用户的表述、连续追加任务或日常使用习惯触发或可能违背本文件中的换窗、上下文分层、验收预算、工作树卫生、授权、隐私或发布边界时，不得因用户未主动询问而保持沉默。
 - 不涉及即时安全或不可逆后果时，不应打断当前可完成的闭环；应在任务结束、阻塞或最近阶段边界明确说明触发的规则、现场事实、继续沿用的风险和建议动作。涉及不可逆操作、远端状态、隐私泄露或授权扩大时，必须在执行前提醒并取得所需授权。
 - 提醒应具体、简短且可行动，区分“规则已触发”“即将触发”和“仅为优化建议”；不得把同一条已知提醒在状态未变化时反复输出，也不得以提醒义务为由无限延长验收。
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
