@@ -1,4 +1,4 @@
-"""SQLite 连接管理与建表。业务 DAO 见 event_dao.py / asset_dao.py。"""
+"""SQLite 连接管理与建表。业务 DAO 见 event_dao.py / asset_dao.py / production_dao.py。"""
 
 import sqlite3
 import threading
@@ -35,6 +35,26 @@ _SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_media_assets_event ON media_assets(event_id)",
+    """
+    CREATE TABLE IF NOT EXISTS production (
+        id TEXT PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        production_type TEXT NOT NULL,
+        asset_ids_json TEXT NOT NULL DEFAULT '[]',
+        title TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        cover_asset_id TEXT NOT NULL DEFAULT '',
+        rule TEXT NOT NULL DEFAULT '',
+        composer TEXT NOT NULL DEFAULT 'template',
+        quality_score REAL NOT NULL DEFAULT 0,
+        quality_status TEXT NOT NULL,
+        checks_json TEXT NOT NULL DEFAULT '[]',
+        vetoes_json TEXT NOT NULL DEFAULT '[]',
+        account_id TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_production_event ON production(event_id)",
 ]
 
 

@@ -1,8 +1,8 @@
-"""DAO 层测试：建表幂等、事件/素材往返、过滤排序。"""
+"""DAO 层测试：建表幂等、事件/素材/成品往返、过滤排序。"""
 
 import pytest
 
-from app.daos import DB, EventDao, MediaAssetDao
+from app.daos import DB, EventDao, MediaAssetDao, ProductionDao
 from app.models import (
     AuthStatus,
     Clarity,
@@ -10,6 +10,9 @@ from app.models import (
     EventStatus,
     MediaAsset,
     MediaType,
+    Production,
+    ProductionType,
+    QualityStatus,
     SourceType,
     TimelineEntry,
 )
@@ -143,3 +146,57 @@ def test_asset_list_by_event(asset_dao) -> None:
     assert len(ev1_assets) == 2
     assert all(a.event_id == "ev1" for a in ev1_assets)
     assert asset_dao.list_by_event("missing") == []
+
+
+# ---- ProductionDao ----
+
+@pytest.fixture()
+def production_dao(db) -> ProductionDao:
+    return ProductionDao(db)
+
+
+def _production(event_id: str = "ev1", **kw) -> Production:
+    return Production(
+        event_id=event_id,
+        production_type=kw.pop("production_type", ProductionType.IMAGE_SLIDESHOW),
+        asset_ids=kw.pop("asset_ids", ["a1", "a2"]),
+        title=kw.pop("title", "多图直击：某地突发山火"),
+        body=kw.pop("body", "正文第一段……"),
+        cover_asset_id=kw.pop("cover_asset_id", "a1"),
+        rule=kw.pop("rule", "规则2：无可用视频成片，采用多张图集呈现"),
+        composer=kw.pop("composer", "template"),
+        checks=kw.pop("checks", ["署名完整", "时间线完整"]),
+        vetoes=kw.pop("vetoes", []),
+        quality_score=kw.pop("quality_score", 82.5),
+        quality_status=kw.pop("quality_status", QualityStatus.QUALIFIED),
+        **kw,
+    )
+
+
+def test_production_roundtrip_preserves_all_fields(production_dao) -> None:
+    p = _production()
+    production_dao.insert(p)
+
+    assert production_dao.get_by_event("ev1") == p
+
+
+def test_production_list_filters_status_and_orders_by_created(production_dao) -> None:
+    p_old = _production(event_id="ev1", title="旧成品", quality_status=QualityStatus.HELD)
+    p_old.created_at = "2026-09-15T08:00:00+00:00"
+    p_new = _production(event_id="ev2", title="新成品", quality_status=QualityStatus.BLOCKED)
+    p_new.created_at = "2026-09-16T08:00:00+00:00"
+    production_dao.insert(p_old)
+    production_dao.insert(p_new)
+
+    all_prods = production_dao.list()
+    assert [p.title for p in all_prods] == ["新成品", "旧成品"]
+
+    blocked = production_dao.list(status=QualityStatus.BLOCKED)
+    assert [p.title for p in blocked] == ["新成品"]
+
+    top1 = production_dao.list(limit=1)
+    assert len(top1) == 1 and top1[0].title == "新成品"
+
+
+def test_production_get_by_event_missing_returns_none(production_dao) -> None:
+    assert production_dao.get_by_event("nope") is None
