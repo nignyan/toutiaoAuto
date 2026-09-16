@@ -12,6 +12,14 @@ class AccountStatus(str, Enum):
     INACTIVE = "inactive"
 
 
+class AccountRole(str, Enum):
+    """角色域（产品设计文档 §4.6 多域结构）。"""
+
+    PRIMARY = "primary"  # 主域：承载稳定垂类内容，自动分配第二层级
+    TEST = "test"  # 测试域：选题与形态实验，不参与自动分配
+    EXPERIMENT = "experiment"  # 实验域：分配链最末层级，可删除
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -35,7 +43,8 @@ class Account(BaseModel):
     id: str = Field(default_factory=_new_id)
     name: str
     vertical: str = ""  # 账号垂类
-    daily_quota: int = Field(default=0, ge=0)  # 日产量
+    role: AccountRole = AccountRole.PRIMARY  # 角色域，域设置保存后立即生效
+    daily_quota: int = Field(default=0, ge=0)  # 日产量（当日入队上限，0 不参与分配）
     publish_window_start: str = ""  # 发布时间窗口（HH:MM）
     publish_window_end: str = ""
     status: AccountStatus = AccountStatus.ACTIVE

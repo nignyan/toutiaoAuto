@@ -32,6 +32,7 @@ class Production(BaseModel):
 
     id: str = Field(default_factory=_new_id)
     event_id: str
+    vertical: str = ""  # 成品垂类标签；空 = 通用，不参与垂类精确匹配
     production_type: ProductionType
     asset_ids: list[str] = Field(default_factory=list)
     title: str = ""

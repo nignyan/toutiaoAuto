@@ -1,4 +1,4 @@
-"""SQLite 连接管理与建表。业务 DAO 见 event_dao.py / asset_dao.py / production_dao.py。"""
+"""SQLite 连接管理与建表。业务 DAO 见 event_dao.py / asset_dao.py / production_dao.py 等。"""
 
 import sqlite3
 import threading
@@ -40,6 +40,7 @@ _SCHEMA = [
     CREATE TABLE IF NOT EXISTS production (
         id TEXT PRIMARY KEY,
         event_id TEXT NOT NULL,
+        vertical TEXT NOT NULL DEFAULT '',
         production_type TEXT NOT NULL,
         asset_ids_json TEXT NOT NULL DEFAULT '[]',
         title TEXT NOT NULL DEFAULT '',
@@ -56,7 +57,51 @@ _SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_production_event ON production(event_id)",
+    """
+    CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        vertical TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT 'primary',
+        daily_quota INTEGER NOT NULL DEFAULT 0,
+        publish_window_start TEXT NOT NULL DEFAULT '',
+        publish_window_end TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active',
+        channel TEXT NOT NULL DEFAULT 'toutiao',
+        adapter TEXT NOT NULL DEFAULT 'draft',
+        auto_publish INTEGER NOT NULL DEFAULT 0,
+        profile_dir TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS publish_queue (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        production_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_for TEXT NOT NULL DEFAULT '',
+        publish_result TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """,
+    # production 与队列项 1:1，唯一索引兜底重复入队（规格 D10 §4.3）
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_publish_queue_production"
+    " ON publish_queue(production_id)",
+    "CREATE INDEX IF NOT EXISTS idx_publish_queue_account ON publish_queue(account_id)",
 ]
+
+# 存量库补列迁移：CREATE TABLE IF NOT EXISTS 不会更新已存在的表
+_COLUMN_MIGRATIONS = {
+    "production": {"vertical": "vertical TEXT NOT NULL DEFAULT ''"},
+}
+
+
+def _ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for col, ddl in columns.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
 
 class DB:
@@ -74,11 +119,13 @@ class DB:
         return self._conn
 
     def migrate(self) -> None:
-        """幂等建表，应用启动与测试夹具时调用。"""
+        """幂等建表 + 存量库补列，应用启动与测试夹具时调用。"""
         with self._lock:
             conn = self.connect()
             for ddl in _SCHEMA:
                 conn.execute(ddl)
+            for table, columns in _COLUMN_MIGRATIONS.items():
+                _ensure_columns(conn, table, columns)
             conn.commit()
 
     def run(self, sql: str, params: tuple = ()) -> None:

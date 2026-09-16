@@ -1,9 +1,21 @@
-"""DAO 层测试：建表幂等、事件/素材/成品往返、过滤排序。"""
+"""DAO 层测试：建表幂等、事件/素材/成品/账号/队列往返、过滤排序、存量库补列。"""
+
+import sqlite3
 
 import pytest
 
-from app.daos import DB, EventDao, MediaAssetDao, ProductionDao
+from app.daos import (
+    AccountDao,
+    DB,
+    EventDao,
+    MediaAssetDao,
+    ProductionDao,
+    PublishQueueDao,
+)
 from app.models import (
+    Account,
+    AccountRole,
+    AccountStatus,
     AuthStatus,
     Clarity,
     Event,
@@ -12,6 +24,8 @@ from app.models import (
     MediaType,
     Production,
     ProductionType,
+    PublishQueueItem,
+    PublishStatus,
     QualityStatus,
     SourceType,
     TimelineEntry,
@@ -200,3 +214,188 @@ def test_production_list_filters_status_and_orders_by_created(production_dao) ->
 
 def test_production_get_by_event_missing_returns_none(production_dao) -> None:
     assert production_dao.get_by_event("nope") is None
+
+
+def test_production_get_by_id_and_roundtrip_vertical(production_dao) -> None:
+    p = _production(vertical="科技")
+    production_dao.insert(p)
+
+    assert production_dao.get(p.id) == p  # 含 vertical 全字段往返
+    assert production_dao.get("nope") is None
+
+
+def test_production_update_account_with(production_dao, db) -> None:
+    p = _production()
+    production_dao.insert(p)
+
+    with db.transaction() as conn:
+        production_dao.update_account_with(conn, p.id, "acc1")
+    assert production_dao.get(p.id).account_id == "acc1"
+
+
+# ---- 存量库迁移 ----
+
+_LEGACY_PRODUCTION_DDL = """
+CREATE TABLE IF NOT EXISTS production (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    production_type TEXT NOT NULL,
+    asset_ids_json TEXT NOT NULL DEFAULT '[]',
+    title TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    cover_asset_id TEXT NOT NULL DEFAULT '',
+    rule TEXT NOT NULL DEFAULT '',
+    composer TEXT NOT NULL DEFAULT 'template',
+    quality_score REAL NOT NULL DEFAULT 0,
+    quality_status TEXT NOT NULL,
+    checks_json TEXT NOT NULL DEFAULT '[]',
+    vetoes_json TEXT NOT NULL DEFAULT '[]',
+    account_id TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+)
+"""
+
+
+def test_migrate_adds_vertical_to_legacy_production_db(tmp_path) -> None:
+    path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(path)
+    conn.execute(_LEGACY_PRODUCTION_DDL)
+    conn.execute(
+        "INSERT INTO production (id, event_id, production_type, quality_status, created_at)"
+        " VALUES ('p1', 'ev1', 'video', 'qualified', '2026-09-15T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    d = DB(path)
+    d.migrate()  # 存量库补列 + 新表幂等创建
+    loaded = ProductionDao(d).get("p1")
+    assert loaded is not None
+    assert loaded.vertical == ""  # 补列默认值，旧行存活
+    d.migrate()  # 二次迁移幂等
+
+
+# ---- AccountDao ----
+
+@pytest.fixture()
+def account_dao(db) -> AccountDao:
+    return AccountDao(db)
+
+
+def _account(name: str = "主域账号", **kw) -> Account:
+    return Account(
+        name=name,
+        vertical=kw.pop("vertical", ""),
+        role=kw.pop("role", AccountRole.PRIMARY),
+        daily_quota=kw.pop("daily_quota", 3),
+        publish_window_start=kw.pop("publish_window_start", "08:00"),
+        publish_window_end=kw.pop("publish_window_end", "22:00"),
+        status=kw.pop("status", AccountStatus.ACTIVE),
+        auto_publish=kw.pop("auto_publish", False),
+        profile_dir=kw.pop("profile_dir", "profiles/acc1"),
+        **kw,
+    )
+
+
+def test_account_roundtrip_preserves_all_fields(account_dao) -> None:
+    a = _account()
+    account_dao.upsert(a)
+
+    assert account_dao.get(a.id) == a  # 含 role/auto_publish 全字段往返
+
+
+def test_account_list_filters_status_and_sorts_by_created(account_dao) -> None:
+    old = _account(name="旧账号")
+    old.created_at = "2026-09-14T00:00:00+00:00"
+    new = _account(name="新账号", status=AccountStatus.INACTIVE)
+    new.created_at = "2026-09-16T00:00:00+00:00"
+    account_dao.upsert(new)
+    account_dao.upsert(old)
+
+    assert [a.name for a in account_dao.list()] == ["旧账号", "新账号"]  # 配置时间升序
+    assert [a.name for a in account_dao.list(status=AccountStatus.ACTIVE)] == ["旧账号"]
+
+
+def test_account_delete_reports_existence(account_dao) -> None:
+    a = _account()
+    account_dao.upsert(a)
+
+    assert account_dao.delete(a.id) is True
+    assert account_dao.get(a.id) is None
+    assert account_dao.delete("nope") is False
+
+
+# ---- PublishQueueDao ----
+
+@pytest.fixture()
+def queue_dao(db) -> PublishQueueDao:
+    return PublishQueueDao(db)
+
+
+def _queue_item(account_id: str = "acc1", production_id: str = "p1", **kw) -> PublishQueueItem:
+    return PublishQueueItem(
+        account_id=account_id,
+        production_id=production_id,
+        status=kw.pop("status", PublishStatus.PENDING),
+        scheduled_for=kw.pop("scheduled_for", ""),
+        publish_result=kw.pop("publish_result", ""),
+        **kw,
+    )
+
+
+def test_queue_roundtrip_and_get_by_production(queue_dao) -> None:
+    item = _queue_item()
+    queue_dao.insert(item)
+
+    assert queue_dao.get(item.id) == item
+    assert queue_dao.get_by_production("p1") == item
+    assert queue_dao.get_by_production("nope") is None
+
+
+def test_queue_rejects_duplicate_production(queue_dao) -> None:
+    queue_dao.insert(_queue_item())
+
+    with pytest.raises(sqlite3.IntegrityError):  # 唯一索引兜底 1:1 幂等
+        queue_dao.insert(_queue_item())
+
+
+def test_queue_list_filters_fifo_order(queue_dao) -> None:
+    first = _queue_item(account_id="acc1", production_id="p1")
+    second = _queue_item(account_id="acc1", production_id="p2")
+    second.created_at = "2026-09-16T01:00:00+00:00"
+    other = _queue_item(account_id="acc2", production_id="p3", status=PublishStatus.PUBLISHED)
+    other.created_at = "2026-09-16T02:00:00+00:00"
+    first.created_at = "2026-09-16T00:00:00+00:00"
+    queue_dao.insert(other)
+    queue_dao.insert(first)
+    queue_dao.insert(second)
+
+    assert [i.production_id for i in queue_dao.list()] == ["p1", "p2", "p3"]  # FIFO
+    assert [i.production_id for i in queue_dao.list(account_id="acc1")] == ["p1", "p2"]
+    assert [i.production_id for i in queue_dao.list(status=PublishStatus.PUBLISHED)] == ["p3"]
+    assert [i.production_id for i in queue_dao.list(limit=2)] == ["p1", "p2"]
+
+
+def test_queue_count_by_account_on_date_prefix(queue_dao) -> None:
+    today_item = _queue_item(account_id="acc1", production_id="p1")
+    today_item.created_at = "2026-09-16T03:00:00+00:00"
+    another_today = _queue_item(account_id="acc1", production_id="p2")
+    another_today.created_at = "2026-09-16T04:00:00+00:00"
+    other_account = _queue_item(account_id="acc2", production_id="p3")
+    other_account.created_at = "2026-09-16T05:00:00+00:00"
+    yesterday = _queue_item(account_id="acc1", production_id="p4")
+    yesterday.created_at = "2026-09-15T23:00:00+00:00"
+    for item in (today_item, another_today, other_account, yesterday):
+        queue_dao.insert(item)
+
+    counts = queue_dao.count_by_account_on("2026-09-16")
+    assert counts == {"acc1": 2, "acc2": 1}  # 昨日条目不计入当日配额
+
+
+def test_queue_count_for_account_with_status(queue_dao) -> None:
+    queue_dao.insert(_queue_item(production_id="p1"))
+    queue_dao.insert(_queue_item(production_id="p2", status=PublishStatus.PUBLISHED))
+
+    assert queue_dao.count_for_account("acc1") == 2
+    assert queue_dao.count_for_account("acc1", status=PublishStatus.PENDING) == 1
+    assert queue_dao.count_for_account("acc2") == 0

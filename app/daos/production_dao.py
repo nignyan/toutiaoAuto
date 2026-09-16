@@ -12,6 +12,7 @@ def _to_row(prod: Production) -> tuple:
     return (
         prod.id,
         prod.event_id,
+        prod.vertical,
         prod.production_type.value,
         json.dumps(prod.asset_ids, ensure_ascii=False),
         prod.title,
@@ -32,6 +33,7 @@ def _from_row(row) -> Production:
     return Production(
         id=row["id"],
         event_id=row["event_id"],
+        vertical=row["vertical"],
         production_type=ProductionType(row["production_type"]),
         asset_ids=json.loads(row["asset_ids_json"]),
         title=row["title"],
@@ -53,10 +55,10 @@ class ProductionDao:
 
     _INSERT_SQL = (
         "INSERT OR REPLACE INTO production"
-        " (id, event_id, production_type, asset_ids_json, title, body,"
+        " (id, event_id, vertical, production_type, asset_ids_json, title, body,"
         "  cover_asset_id, rule, composer, quality_score, quality_status,"
         "  checks_json, vetoes_json, account_id, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
 
     def __init__(self, db: DB) -> None:
@@ -68,6 +70,16 @@ class ProductionDao:
     def insert_with(self, conn, prod: Production) -> None:
         """在外部事务连接上写入（db.transaction 内使用，勿与 run 混用）。"""
         conn.execute(self._INSERT_SQL, _to_row(prod))
+
+    def update_account_with(self, conn, production_id: str, account_id: str) -> None:
+        """在外部事务连接上回填分配账号（分配入队事务内使用）。"""
+        conn.execute(
+            "UPDATE production SET account_id = ? WHERE id = ?", (account_id, production_id)
+        )
+
+    def get(self, production_id: str) -> Production | None:
+        rows = self._db.query("SELECT * FROM production WHERE id = ?", (production_id,))
+        return _from_row(rows[0]) if rows else None
 
     def get_by_event(self, event_id: str) -> Production | None:
         rows = self._db.query(
