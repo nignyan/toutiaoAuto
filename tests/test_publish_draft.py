@@ -11,7 +11,7 @@ from app.publish.adapter import (
     PublishAdapter,
     PublishStatus,
 )
-from app.publish.toutiao_draft import SELECTORS, ToutiaoDraftAdapter
+from app.publish.toutiao_draft import DRAFT_SETTLE_MS, SELECTORS, ToutiaoDraftAdapter
 
 
 class FakeKeyboard:
@@ -29,9 +29,17 @@ class FakePage:
         self.calls: list = []
         self.logged_in = logged_in
         self.keyboard = FakeKeyboard(self.calls)
+        # 未登录时真实后台会 302 到独立登录页（D14 校准）
+        self.url = "" if logged_in else "https://mp.toutiao.com/auth/page/login"
 
     def goto(self, url: str) -> None:
         self.calls.append(("goto", url))
+
+    def wait_for_url(self, url_pattern: str, timeout: int = 0):
+        self.calls.append(("wait_for_url", url_pattern))
+        if "auth" in self.url:
+            return
+        raise TimeoutError(f"wait_for_url timeout {timeout}ms")
 
     def wait_for_selector(self, selector: str, timeout: int = 0):
         self.calls.append(("wait_for_selector", selector))
@@ -47,6 +55,19 @@ class FakePage:
 
     def click(self, selector: str, timeout: int = 0) -> None:
         self.calls.append(("click", selector))
+
+    def wait_for_timeout(self, timeout: int) -> None:
+        self.calls.append(("wait_for_timeout", timeout))
+
+
+class RealTimeoutPage(FakePage):
+    """模拟真实 Playwright 行为：等不到选择器时抛 TimeoutError，而非返回 None。"""
+
+    def wait_for_selector(self, selector: str, timeout: int = 0):
+        self.calls.append(("wait_for_selector", selector))
+        if selector == SELECTORS["login_entry"] and self.logged_in:
+            raise TimeoutError(f"Timeout {timeout}ms exceeded")
+        return object()
 
 
 class FakeCtx:
@@ -114,14 +135,14 @@ def test_fill_draft_order_goto_upload_title_body_tags_cover():
     page = FakePage(logged_in=True)
     make_adapter(page).publish(video_package(), make_account())
 
-    kinds = [c[0] for c in page.calls if c[0] != "wait_for_selector"]
+    kinds = [c[0] for c in page.calls if c[0] not in ("wait_for_selector", "wait_for_url")]
     assert kinds == [
         "goto", "set_input_files", "fill", "fill",
         "fill", "press", "fill", "press",  # 两个标签
         "set_input_files",  # 封面
         "click",  # 存草稿
     ]
-    ops = [c for c in page.calls if c[0] != "wait_for_selector"]
+    ops = [c for c in page.calls if c[0] not in ("wait_for_selector", "wait_for_url")]
     assert ops[1] == ("set_input_files", SELECTORS["video_upload"], str(Path("pkg/video.mp4")))
     assert ops[2] == ("fill", SELECTORS["title_input"], "突发山火：救援连夜扑救")
 
@@ -144,6 +165,33 @@ def test_needs_login_short_circuits():
     assert not [c for c in page.calls if c[0] in ("fill", "set_input_files", "click")]
 
 
+def test_logged_in_detected_via_timeout_when_entry_absent():
+    """真实 Playwright 等不到登录入口会抛超时而非返回 None——应视为已登录。"""
+    page = RealTimeoutPage(logged_in=True)
+    result = make_adapter(page).publish(video_package(), make_account())
+
+    assert result.status == PublishStatus.DRAFT_READY
+
+
+def test_not_logged_in_detected_when_entry_present():
+    """兜底路径：URL 未含 auth 但登录入口存在（如登录页变体）也应判未登录。"""
+    page = RealTimeoutPage(logged_in=False)
+    page.url = "https://mp.toutiao.com/some-other-page"
+    result = make_adapter(page).publish(video_package(), make_account())
+
+    assert result.status == PublishStatus.NEEDS_LOGIN
+
+
+def test_needs_login_via_auth_redirect_url():
+    """D14 校准：未登录 302 到 /auth/page/login，按 URL 判定，不依赖按钮渲染速度。"""
+    page = FakePage(logged_in=False)
+    result = make_adapter(page).publish(video_package(), make_account())
+
+    assert result.status == PublishStatus.NEEDS_LOGIN
+    assert ("wait_for_url", "**/auth/**") in page.calls
+    assert not [c for c in page.calls if c[0] in ("fill", "set_input_files", "click")]
+
+
 def test_article_package_uses_article_url_without_video_upload():
     page = FakePage(logged_in=True)
     pkg = ContentPackage(title="图文快讯", body="正文", format=ContentFormat.ARTICLE, tags=["快讯"])
@@ -153,6 +201,18 @@ def test_article_package_uses_article_url_without_video_upload():
     uploads = [c for c in page.calls if c[0] == "set_input_files"]
     assert gotos == [SELECTORS["article_publish_url"]]
     assert uploads == []
+
+
+def test_article_auto_saves_without_clicking():
+    """图文页平台自动存草稿（D14 真机校准）：不点击任何按钮，等待落盘即返回。"""
+    page = FakePage(logged_in=True)
+    pkg = ContentPackage(title="图文快讯", body="正文", format=ContentFormat.ARTICLE)
+    result = make_adapter(page).publish(pkg, make_account())
+
+    assert result.status == PublishStatus.DRAFT_READY
+    assert result.message == "草稿已自动保存，等待人工发布"
+    assert [c for c in page.calls if c[0] == "click"] == []
+    assert ("wait_for_timeout", DRAFT_SETTLE_MS) in page.calls
 
 
 def test_adapter_satisfies_protocol():
@@ -166,3 +226,116 @@ def test_account_defaults_draft_adapter_and_auto_publish_off():
     assert acc.channel == PublishChannel.TOUTIAO
     assert acc.adapter == PublishAdapterKind.DRAFT
     assert acc.auto_publish is False
+
+
+# ---- CDP 模式（D14 路线 A）----
+
+class FakeCdpPage(FakePage):
+    """CDP 页面替身：显式指定 URL，并记录 close()（新建页才会被关闭）。"""
+
+    def __init__(self, url: str = "https://mp.toutiao.com/", logged_in: bool = True):
+        super().__init__(logged_in=logged_in)
+        self.url = url
+        self.closed = False
+
+    def close(self) -> None:
+        self.calls.append(("close",))
+        self.closed = True
+
+
+class FakeCdpContext:
+    def __init__(self, pages: list):
+        self.pages = pages
+
+    def new_page(self) -> FakeCdpPage:
+        page = FakeCdpPage(url="about:blank")
+        self.pages.append(page)
+        return page
+
+
+class FakeCdpBrowser:
+    """connect_over_cdp 替身：单个默认上下文；close 只计数（断连语义）。"""
+
+    def __init__(self, pages: list):
+        self.contexts = [FakeCdpContext(pages)]
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+def article_package() -> ContentPackage:
+    return ContentPackage(title="图文快讯", body="正文内容", format=ContentFormat.ARTICLE)
+
+
+def make_cdp_adapter(
+    browser: FakeCdpBrowser, endpoint: str = "http://localhost:9222"
+) -> tuple[ToutiaoDraftAdapter, list[str]]:
+    seen: list[str] = []
+
+    def factory(ep: str) -> FakeCdpBrowser:
+        seen.append(ep)
+        return browser
+
+    return ToutiaoDraftAdapter(cdp_endpoint=endpoint, cdp_browser_factory=factory), seen
+
+
+def test_cdp_mode_reuses_existing_toutiao_tab():
+    """CDP 模式：复用已打开的头条标签页填稿；退出仅断连，不关闭复用标签页。"""
+    page = FakeCdpPage(url="https://mp.toutiao.com/profile_v4/graphic/publish")
+    browser = FakeCdpBrowser([page])
+    adapter, seen = make_cdp_adapter(browser)
+
+    result = adapter.publish(article_package(), make_account())
+
+    assert seen == ["http://localhost:9222"]  # endpoint 透传给工厂
+    assert result.status == PublishStatus.DRAFT_READY
+    assert result.message == "草稿已自动保存，等待人工发布"
+    assert ("fill", SELECTORS["title_input"], "图文快讯") in page.calls
+    assert page.closed is False
+    assert browser.close_calls == 1
+
+
+def test_cdp_mode_creates_and_closes_tab_when_toutiao_absent():
+    """CDP 模式：无头条标签页时新建；退出只关新建页，用户浏览器保持运行。"""
+    browser = FakeCdpBrowser([])
+    adapter, _ = make_cdp_adapter(browser)
+
+    result = adapter.publish(article_package(), make_account())
+
+    assert result.status == PublishStatus.DRAFT_READY
+    assert len(browser.contexts[0].pages) == 1
+    created = browser.contexts[0].pages[0]
+    assert ("goto", SELECTORS["article_publish_url"]) in created.calls
+    assert ("fill", SELECTORS["title_input"], "图文快讯") in created.calls
+    assert created.closed is True
+    assert browser.close_calls == 1
+
+
+def test_cdp_mode_needs_login_short_circuits_and_keeps_tab():
+    """CDP 模式：未登录（auth 页）短路返回 NEEDS_LOGIN，不执行填稿、不关复用页。"""
+    page = FakeCdpPage(url="https://mp.toutiao.com/auth/page/login", logged_in=False)
+    browser = FakeCdpBrowser([page])
+    adapter, _ = make_cdp_adapter(browser)
+
+    result = adapter.publish(article_package(), make_account())
+
+    assert result.status == PublishStatus.NEEDS_LOGIN
+    assert "调试浏览器" in result.message
+    assert not [c for c in page.calls if c[0] in ("fill", "set_input_files", "click")]
+    assert page.closed is False
+    assert browser.close_calls == 1
+
+
+def test_cdp_factory_ignored_without_endpoint():
+    """cdp_endpoint 为空时走 profile 模式注入（browser_factory），CDP 工厂不生效。"""
+    called: list[str] = []
+    adapter = ToutiaoDraftAdapter(
+        browser_factory=lambda profile_dir: FakeCtx(FakePage(logged_in=True)),
+        cdp_browser_factory=lambda ep: called.append(ep),
+    )
+
+    result = adapter.publish(article_package(), make_account())
+
+    assert result.status == PublishStatus.DRAFT_READY
+    assert called == []

@@ -1,5 +1,7 @@
 """管道相关 API：采集、事件、素材、生产、账号、发布队列与发布执行。"""
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -71,8 +73,10 @@ def get_composer() -> ContentComposer:
 
 
 def get_adapter() -> PublishAdapter:
-    """发布适配器工厂（D13）；测试用 dependency_overrides 注入替身。"""
-    return ToutiaoDraftAdapter()
+    """发布适配器工厂（D13）；测试用 dependency_overrides 注入替身。
+    D14：设置环境变量 TOUTIAO_CDP_ENDPOINT 时走 CDP 模式连接用户真实 Chrome
+    （profile 模式的自动化指纹会触发头条风控，保存接口 7050）。"""
+    return ToutiaoDraftAdapter(cdp_endpoint=os.environ.get("TOUTIAO_CDP_ENDPOINT") or None)
 
 
 # ---- 请求/响应模型 ----

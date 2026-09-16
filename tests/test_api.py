@@ -476,6 +476,21 @@ _DRAFT_OK = PublishResult(status=AdapterStatus.DRAFT_READY, message="草稿箱�
 _AUTO_PUB = PublishResult(status=AdapterStatus.PUBLISHED, message="已自动发布")
 
 
+# ---- get_adapter CDP 接线（D14）----
+
+def test_get_adapter_reads_cdp_endpoint_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("TOUTIAO_CDP_ENDPOINT", "http://localhost:9222")
+    adapter = get_adapter()
+
+    assert adapter.cdp_endpoint == "http://localhost:9222"
+
+
+def test_get_adapter_defaults_to_profile_mode(monkeypatch) -> None:
+    monkeypatch.delenv("TOUTIAO_CDP_ENDPOINT", raising=False)
+
+    assert get_adapter().cdp_endpoint is None
+
+
 def _enqueue_one(api: DB) -> dict:
     """账号 + QUALIFIED 成品入队，返回队列项。"""
     _create_account()
