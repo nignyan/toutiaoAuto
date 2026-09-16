@@ -170,7 +170,7 @@ const Engine = {
       if (qc.status === "blocked") {
         log("qc", `「${ev.kw}」触发一票否决：${qc.vetoes.join("、")}，已拦截并转入待确认`);
       } else if (qc.status === "held") {
-        log("qc", `「${ev.kw}」质量分 ${qc.score} < 75，留档，次日自动降级重试`);
+        log("qc", `「${ev.kw}」质量分 ${qc.score} < 75，留档，等待人工捞回重试`);
       } else if (acc) {
         const maxOrder = Math.max(-1, ...s.queue.filter(q => q.accountId === acc.id).map(q => q.order));
         s.queue.push({ id: uid("q"), productionId: prod.id, accountId: acc.id, status: "pending", order: maxOrder + 1, createdAt: nowMs(), publishedAt: null });

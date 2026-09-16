@@ -1,4 +1,4 @@
-/* ============ 视图：自动质检（一票否决 + 质量分 + 留档重试） ============ */
+/* ============ 视图：自动质检（一票否决 + 质量分 + 留档人工重试） ============ */
 VIEWS = VIEWS || {};
 
 VIEWS["自动质检"] = function () {
@@ -7,12 +7,12 @@ VIEWS["自动质检"] = function () {
   const held = list.filter(p => p.status === "held");
   const passed = list.filter(p => p.status === "qualified");
   return `
-    <div class="section-title">QUALITY GATE · 硬性一票否决直接拦截 · 质量分 &lt; 75 留档降级
+    <div class="section-title">QUALITY GATE · 硬性一票否决直接拦截 · 质量分 &lt; 75 留档
       <span class="right">通过 ${passed.length} · 留档 ${held.length} · 拦截 ${blocked.length}</span></div>
 
     <div class="stat-row" style="grid-template-columns:repeat(3,1fr)">
       <div class="card stat"><div class="v" style="color:var(--ok)">${passed.length}</div><div class="l">已放行入队</div></div>
-      <div class="card stat"><div class="v" style="color:var(--warn)">${held.length}</div><div class="l">留档待重试</div></div>
+      <div class="card stat"><div class="v" style="color:var(--warn)">${held.length}</div><div class="l">留档待人工重试</div></div>
       <div class="card stat"><div class="v" style="color:var(--danger)">${blocked.length}</div><div class="l">一票否决拦截</div></div>
     </div>
 
@@ -37,7 +37,7 @@ VIEWS["自动质检"] = function () {
     </table></div>`}`;
 };
 
-/* 留档重试：真实重新评分，达标即自动入队 */
+/* 留档人工重试（模拟重生产能力）：重新评分，达标即自动入队 */
 A.qcRetry = function (id) {
   const p = Q.production(id);
   if (!p || p.status !== "held") return;

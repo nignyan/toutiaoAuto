@@ -142,7 +142,7 @@ const EV_STATUS = {
 };
 const PROD_STATUS = {
   qualified: { label: "质检通过", cls: "ok" },
-  held: { label: "留档 · 待重试", cls: "warn" },
+  held: { label: "留档 · 人工捞回", cls: "warn" },
   blocked: { label: "一票否决拦截", cls: "danger" },
 };
 const QUEUE_STATUS = {
