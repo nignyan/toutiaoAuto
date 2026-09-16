@@ -5,6 +5,8 @@ dispatch_item 把一条队列项派发到 PublishAdapter：由 Production 构建
 纯状态流转。与 producer/allocator 同构：错误类型 + 纯函数 + 编排函数。
 """
 
+from datetime import datetime, timezone
+
 from app.daos import DB, AccountDao, ProductionDao, PublishQueueDao
 from app.models import Production, PublishQueueItem, PublishStatus
 from app.publish.adapter import (
@@ -27,6 +29,10 @@ _RESULT_MAP = {
     AdapterPublishStatus.NEEDS_LOGIN: PublishStatus.FAILED,
     AdapterPublishStatus.FAILED: PublishStatus.FAILED,
 }
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class DispatchError(Exception):
@@ -88,9 +94,14 @@ def dispatch_item(db: DB, item_id: str, adapter: PublishAdapter) -> PublishQueue
 
     queue_status = map_result(result)
     publish_result = f"[{result.status.value}] {result.message}"
-    PublishQueueDao(db).update_status(item.id, queue_status, publish_result)
+    published_at = _utc_now() if queue_status == PublishStatus.PUBLISHED else None
+    PublishQueueDao(db).update_status(
+        item.id, queue_status, publish_result, published_at=published_at
+    )
     item.status = queue_status
     item.publish_result = publish_result
+    if published_at is not None:
+        item.published_at = published_at
     return item
 
 
@@ -134,9 +145,14 @@ def confirm_published(db: DB, item_id: str) -> PublishQueueItem:
         raise DispatchError(
             "bad_status", f"队列项状态为 {item.status.value}，仅 draft_ready 可确认发布"
         )
+    published_at = _utc_now()
     PublishQueueDao(db).update_status(
-        item.id, PublishStatus.PUBLISHED, publish_result="人工确认已发布"
+        item.id,
+        PublishStatus.PUBLISHED,
+        publish_result="人工确认已发布",
+        published_at=published_at,
     )
     item.status = PublishStatus.PUBLISHED
     item.publish_result = "人工确认已发布"
+    item.published_at = published_at
     return item

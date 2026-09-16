@@ -137,6 +137,8 @@ def test_dispatch_auto_publish_account_records_published(db) -> None:
 
     assert out.status == PublishStatus.PUBLISHED
     assert out.publish_result == "[published] 已自动发布"
+    assert out.published_at  # 自动发布成功即记录发布时刻（数据回流时段分析基准）
+    assert PublishQueueDao(db).get(item.id).published_at == out.published_at
 
 
 def test_dispatch_needs_login_records_failed_with_reason(db) -> None:
@@ -149,6 +151,7 @@ def test_dispatch_needs_login_records_failed_with_reason(db) -> None:
 
     assert out.status == PublishStatus.FAILED
     assert "登录态失效" in out.publish_result
+    assert out.published_at == ""  # 非发布路径不落发布时刻
 
 
 def test_dispatch_adapter_exception_records_failed_not_raise(db) -> None:
@@ -270,7 +273,10 @@ def test_confirm_draft_ready_records_published(db) -> None:
 
     assert out.status == PublishStatus.PUBLISHED
     assert out.publish_result == "人工确认已发布"
-    assert PublishQueueDao(db).get(item.id).publish_result == "人工确认已发布"
+    assert out.published_at  # 确认发布记录发布时刻
+    reloaded = PublishQueueDao(db).get(item.id)
+    assert reloaded.publish_result == "人工确认已发布"
+    assert reloaded.published_at == out.published_at
 
 
 def test_confirm_rejects_non_draft_ready(db) -> None:
