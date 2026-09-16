@@ -1,4 +1,4 @@
-"""应用入口。健康检查 + 管道 API（采集/事件/素材补录）。"""
+"""应用入口。健康检查 + 管道 API（采集/事件/素材补录/内容生产）。"""
 
 import os
 from contextlib import asynccontextmanager

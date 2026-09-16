@@ -35,17 +35,22 @@ def _from_row(row) -> Event:
 class EventDao:
     """events 表的存取。"""
 
+    _UPSERT_SQL = (
+        "INSERT OR REPLACE INTO events"
+        " (id, title, summary, score, status, timeline_json, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+
     def __init__(self, db: DB) -> None:
         self._db = db
 
     def upsert(self, event: Event) -> None:
         """整行覆盖写入（聚类编排层负责合并 timeline / score 后调用）。"""
-        self._db.run(
-            "INSERT OR REPLACE INTO events"
-            " (id, title, summary, score, status, timeline_json, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            _to_row(event),
-        )
+        self._db.run(self._UPSERT_SQL, _to_row(event))
+
+    def upsert_with(self, conn, event: Event) -> None:
+        """在外部事务连接上写入（db.transaction 内使用，勿与 run 混用）。"""
+        conn.execute(self._UPSERT_SQL, _to_row(event))
 
     def get(self, event_id: str) -> Event | None:
         rows = self._db.query("SELECT * FROM events WHERE id = ?", (event_id,))

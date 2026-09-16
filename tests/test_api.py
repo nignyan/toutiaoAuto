@@ -3,11 +3,20 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.pipeline import get_db, get_sources
-from app.daos import DB, EventDao
+from app.api.pipeline import get_composer, get_db, get_sources
+from app.daos import DB, EventDao, MediaAssetDao
 from app.main import app
-from app.models import Event, EventStatus
+from app.models import (
+    AuthStatus,
+    Event,
+    EventStatus,
+    MediaAsset,
+    MediaType,
+    SourceType,
+    TimelineEntry,
+)
 from app.pipeline.collector import FixtureSource, RawSignal
+from app.pipeline.composer import TemplateComposer
 
 client = TestClient(app)
 
@@ -151,4 +160,123 @@ def test_add_asset_to_missing_event_404(api) -> None:
 
 def test_add_asset_rejects_invalid_density(api) -> None:
     resp = client.post("/events/x/assets", json={"type": "image", "info_density": 150})
+    assert resp.status_code == 422
+
+
+# ---- 内容生产 API ----
+
+def _seed_ready(db: DB, n_assets: int = 2, **event_kw) -> Event:
+    ev = Event(
+        title=event_kw.pop("title", "某地突发山火，救援进行中"),
+        timeline=event_kw.pop(
+            "timeline",
+            [
+                TimelineEntry(ts="2026-09-15T08:00:00+00:00", title="首报", heat=80.0),
+                TimelineEntry(ts="2026-09-15T09:00:00+00:00", title="跟进", heat=85.0),
+            ],
+        ),
+        **event_kw,
+    )
+    EventDao(db).upsert(ev)
+    for i in range(n_assets):
+        MediaAssetDao(db).insert(
+            MediaAsset(
+                event_id=ev.id,
+                type=MediaType.IMAGE,
+                source_type=SourceType.A,
+                auth_status=AuthStatus.CLEARED,
+                attribution="来源：合作媒体",
+                info_density=70.0 + 10.0 * i,
+            )
+        )
+    return ev
+
+
+def test_produce_endpoint_200_and_event_transitions(api) -> None:
+    ev = _seed_ready(api)
+
+    resp = client.post("/pipeline/produce", json={"event_id": ev.id})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["event_id"] == ev.id
+    assert body["production_type"] == "image_slideshow"
+    assert body["quality_status"] == "qualified"
+    assert body["rule"] == "规则2"
+
+    detail = client.get(f"/events/{ev.id}").json()
+    assert detail["event"]["status"] == "produced"
+
+
+def test_produce_endpoint_404_unknown_event(api) -> None:
+    resp = client.post("/pipeline/produce", json={"event_id": "missing"})
+    assert resp.status_code == 404
+
+
+def test_produce_endpoint_409_when_not_ready(api) -> None:
+    ev = _seed_ready(api, status=EventStatus.DEFERRED)
+    resp = client.post("/pipeline/produce", json={"event_id": ev.id})
+    assert resp.status_code == 409
+
+
+def test_produce_endpoint_409_on_repeat(api) -> None:
+    ev = _seed_ready(api)
+    assert client.post("/pipeline/produce", json={"event_id": ev.id}).status_code == 200
+    resp = client.post("/pipeline/produce", json={"event_id": ev.id})
+    assert resp.status_code == 409
+
+
+def test_produce_endpoint_422_missing_body(api) -> None:
+    assert client.post("/pipeline/produce").status_code == 422
+
+
+def test_produce_all_endpoint_reports_skipped(api) -> None:
+    ev_ok = _seed_ready(api)
+    _seed_ready(api, n_assets=1, title="素材不足事件")  # READY 但 DEFER → skipped
+
+    resp = client.post("/pipeline/produce/all")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {p["event_id"] for p in body["produced"]} == {ev_ok.id}
+    assert len(body["skipped"]) == 1
+    assert body["skipped"][0]["reason"] == "not_ready"
+
+
+def test_produce_endpoint_uses_composer_override(api) -> None:
+    class _StubComposer:
+        name = "stub"
+
+        def compose(self, event, assets, decision):
+            return TemplateComposer().compose(event, assets, decision)
+
+    ev = _seed_ready(api)
+    app.dependency_overrides[get_composer] = lambda: _StubComposer()
+    resp = client.post("/pipeline/produce", json={"event_id": ev.id})
+    assert resp.status_code == 200
+    assert resp.json()["composer"] == "stub"
+
+
+def test_productions_list_and_status_filter(api) -> None:
+    ev_ok = _seed_ready(api)
+    ev_block = _seed_ready(api, timeline=[], title="时间线缺失事件")  # → BLOCKED
+    assert client.post("/pipeline/produce", json={"event_id": ev_ok.id}).status_code == 200
+    assert client.post("/pipeline/produce", json={"event_id": ev_block.id}).status_code == 200
+
+    all_prods = client.get("/productions").json()
+    assert len(all_prods) == 2
+
+    qualified = client.get("/productions", params={"status": "qualified"}).json()
+    assert [p["event_id"] for p in qualified] == [ev_ok.id]
+
+    blocked = client.get("/productions", params={"status": "blocked"}).json()
+    assert [p["event_id"] for p in blocked] == [ev_block.id]
+
+    held = client.get("/productions", params={"status": "held"}).json()
+    assert held == []
+
+    limited = client.get("/productions", params={"limit": 1}).json()
+    assert len(limited) == 1
+
+
+def test_productions_rejects_invalid_status(api) -> None:
+    resp = client.get("/productions", params={"status": "whatever"})
     assert resp.status_code == 422

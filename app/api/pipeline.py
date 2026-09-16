@@ -1,10 +1,20 @@
-"""管道相关 API：采集触发、事件查询、素材补录（规格 §7）。"""
+"""管道相关 API：采集触发、事件查询、素材补录、内容生产（规格 §7 / §8）。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.daos import DB, EventDao, MediaAssetDao
-from app.models import AuthStatus, Clarity, Event, EventStatus, MediaAsset, MediaType, SourceType
+from app.daos import DB, EventDao, MediaAssetDao, ProductionDao
+from app.models import (
+    AuthStatus,
+    Clarity,
+    Event,
+    EventStatus,
+    MediaAsset,
+    MediaType,
+    Production,
+    QualityStatus,
+    SourceType,
+)
 from app.pipeline.asset_ingest import ingest_asset
 from app.pipeline.clustering import ClusterAssignment, cluster_signals
 from app.pipeline.collector import (
@@ -14,7 +24,9 @@ from app.pipeline.collector import (
     WeiboHotSearchSource,
     fetch_signals,
 )
+from app.pipeline.composer import ContentComposer, TemplateComposer
 from app.pipeline.format_decision import decide_format
+from app.pipeline.producer import ProducerError, produce_all, produce_for_event
 
 router = APIRouter(tags=["pipeline"])
 
@@ -28,6 +40,11 @@ def get_db(request: Request) -> DB:
 def get_sources() -> list[SignalSource]:
     """默认数据源集合；测试用 app.dependency_overrides 注入替身。"""
     return [FixtureSource(), WeiboHotSearchSource()]
+
+
+def get_composer() -> ContentComposer:
+    """composer 工厂（D9 方案 C）；测试用 dependency_overrides 注入替身。"""
+    return TemplateComposer()
 
 
 # ---- 请求/响应模型 ----
@@ -69,6 +86,20 @@ class IngestResponse(BaseModel):
     decision_format: str
     decision_reason: str
     event_status_changed: bool
+
+
+class ProduceRequest(BaseModel):
+    event_id: str
+
+
+class ProduceSkip(BaseModel):
+    event_id: str
+    reason: str
+
+
+class ProduceAllResponse(BaseModel):
+    produced: list[Production]
+    skipped: list[ProduceSkip]
 
 
 # ---- 端点 ----
@@ -154,3 +185,40 @@ def add_asset(
         decision_reason=result.decision.reason,
         event_status_changed=result.event_status_changed,
     )
+
+
+@router.post("/pipeline/produce", response_model=Production)
+def produce(
+    body: ProduceRequest,
+    db: DB = Depends(get_db),
+    composer: ContentComposer = Depends(get_composer),
+) -> Production:
+    """单事件生产：200 成品；404 事件不存在；409 非 READY 或已生产。"""
+    try:
+        return produce_for_event(db, body.event_id, composer)
+    except ProducerError as exc:
+        code = 404 if exc.kind == "not_found" else 409
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.post("/pipeline/produce/all", response_model=ProduceAllResponse)
+def produce_all_endpoint(
+    db: DB = Depends(get_db),
+    composer: ContentComposer = Depends(get_composer),
+) -> ProduceAllResponse:
+    """批量生产全部 READY 事件，失败事件进 skipped 不中断。"""
+    report = produce_all(db, composer)
+    return ProduceAllResponse(
+        produced=report.produced,
+        skipped=[ProduceSkip(event_id=s.event_id, reason=s.reason) for s in report.skipped],
+    )
+
+
+@router.get("/productions", response_model=list[Production])
+def list_productions(
+    status: QualityStatus | None = None,
+    limit: int = 50,
+    db: DB = Depends(get_db),
+) -> list[Production]:
+    """成品列表（留档捞回入口），可按质检状态过滤。"""
+    return ProductionDao(db).list(status=status, limit=limit)

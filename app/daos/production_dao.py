@@ -51,18 +51,23 @@ def _from_row(row) -> Production:
 class ProductionDao:
     """production 表的存取。"""
 
+    _INSERT_SQL = (
+        "INSERT OR REPLACE INTO production"
+        " (id, event_id, production_type, asset_ids_json, title, body,"
+        "  cover_asset_id, rule, composer, quality_score, quality_status,"
+        "  checks_json, vetoes_json, account_id, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+
     def __init__(self, db: DB) -> None:
         self._db = db
 
     def insert(self, prod: Production) -> None:
-        self._db.run(
-            "INSERT OR REPLACE INTO production"
-            " (id, event_id, production_type, asset_ids_json, title, body,"
-            "  cover_asset_id, rule, composer, quality_score, quality_status,"
-            "  checks_json, vetoes_json, account_id, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            _to_row(prod),
-        )
+        self._db.run(self._INSERT_SQL, _to_row(prod))
+
+    def insert_with(self, conn, prod: Production) -> None:
+        """在外部事务连接上写入（db.transaction 内使用，勿与 run 混用）。"""
+        conn.execute(self._INSERT_SQL, _to_row(prod))
 
     def get_by_event(self, event_id: str) -> Production | None:
         rows = self._db.query(

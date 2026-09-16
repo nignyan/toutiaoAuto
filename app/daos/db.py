@@ -2,6 +2,7 @@
 
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 _SCHEMA = [
@@ -86,6 +87,18 @@ class DB:
             conn = self.connect()
             conn.execute(sql, params)
             conn.commit()
+
+    @contextmanager
+    def transaction(self):
+        """跨表原子写入：锁内显式事务，异常时回滚（如生产落库 + 事件状态更新）。"""
+        with self._lock:
+            conn = self.connect()
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         """线程安全的只读查询。"""
