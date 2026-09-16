@@ -79,9 +79,11 @@ class ProductionDao:
 
     def update_title(self, production_id: str, title: str) -> None:
         """行内改标题（发布工作台 PATCH 入口，单表原子写）。"""
-        self._db.run(
-            "UPDATE production SET title = ? WHERE id = ?", (title, production_id)
-        )
+        self._db.run("UPDATE production SET title = ? WHERE id = ?", (title, production_id))
+
+    def update_title_with(self, conn, production_id: str, title: str) -> None:
+        """在外部事务连接上改标题（与调排序跨表同事务时使用）。"""
+        conn.execute("UPDATE production SET title = ? WHERE id = ?", (title, production_id))
 
     def get(self, production_id: str) -> Production | None:
         rows = self._db.query("SELECT * FROM production WHERE id = ?", (production_id,))

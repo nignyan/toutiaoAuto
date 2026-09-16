@@ -445,3 +445,171 @@ def test_wait_queue_timeout_archives_expired_only(api) -> None:
     again = client.post("/pipeline/wait-queue/timeout").json()
     assert again["archived"] == []  # 重复调用幂等：已归档不再出现在等待队列
     assert again["checked"] == 1
+
+
+# ---- 发布执行（D13）----
+
+from app.api.pipeline import get_adapter  # noqa: E402  与替身适配器配套使用
+from app.publish.adapter import PublishResult  # noqa: E402
+from app.publish.adapter import PublishStatus as AdapterStatus  # noqa: E402
+
+
+class _FakeAdapter:
+    """API 层适配器替身：按脚本依次返回结果。"""
+
+    name = "fake"
+
+    def __init__(self, *results: PublishResult):
+        self._results = list(results)
+        self.calls: list = []
+
+    def publish(self, package, account) -> PublishResult:
+        self.calls.append((package, account))
+        return self._results.pop(0)
+
+
+def _override_adapter(adapter: _FakeAdapter) -> None:
+    app.dependency_overrides[get_adapter] = lambda: adapter
+
+
+_DRAFT_OK = PublishResult(status=AdapterStatus.DRAFT_READY, message="草稿箱已填好")
+_AUTO_PUB = PublishResult(status=AdapterStatus.PUBLISHED, message="已自动发布")
+
+
+def _enqueue_one(api: DB) -> dict:
+    """账号 + QUALIFIED 成品入队，返回队列项。"""
+    _create_account()
+    prod = _produce_qualified(api)
+    resp = client.post("/pipeline/enqueue", json={"production_id": prod["id"]})
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_publish_queue_item_fills_draft(api) -> None:
+    item = _enqueue_one(api)
+    _override_adapter(_FakeAdapter(_DRAFT_OK))
+
+    resp = client.post(f"/publish-queue/{item['id']}/publish")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "draft_ready"
+    assert "[draft_ready]" in body["publish_result"]
+
+
+def test_publish_queue_item_auto_publish_records_published(api) -> None:
+    item = _enqueue_one(api)
+    _override_adapter(_FakeAdapter(_AUTO_PUB))
+
+    resp = client.post(f"/publish-queue/{item['id']}/publish")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "published"
+
+
+def test_publish_queue_item_failure_and_retry(api) -> None:
+    item = _enqueue_one(api)
+    _override_adapter(_FakeAdapter(PublishResult(status=AdapterStatus.FAILED, message="上传超时")))
+    first = client.post(f"/publish-queue/{item['id']}/publish")
+    assert first.json()["status"] == "failed"  # 适配器失败也是 200（结果落库）
+
+    _override_adapter(_FakeAdapter(_DRAFT_OK))
+    retry = client.post(f"/publish-queue/{item['id']}/publish")
+    assert retry.status_code == 200  # failed 可重试
+    assert retry.json()["status"] == "draft_ready"
+
+
+def test_publish_queue_item_404_unknown(api) -> None:
+    _override_adapter(_FakeAdapter())
+    assert client.post("/publish-queue/missing/publish").status_code == 404
+
+
+def test_publish_queue_item_409_on_repeat_dispatch(api) -> None:
+    item = _enqueue_one(api)
+    _override_adapter(_FakeAdapter(_DRAFT_OK))
+    assert client.post(f"/publish-queue/{item['id']}/publish").status_code == 200
+
+    again = client.post(f"/publish-queue/{item['id']}/publish")
+    assert again.status_code == 409  # draft_ready 不可重复派发（避免重复草稿）
+
+
+def test_skip_unskip_confirm_flow(api) -> None:
+    item = _enqueue_one(api)
+
+    skipped = client.post(f"/publish-queue/{item['id']}/skip")
+    assert skipped.status_code == 200
+    assert skipped.json()["status"] == "skipped"
+
+    blocked = client.post(f"/publish-queue/{item['id']}/publish")
+    assert blocked.status_code == 409  # skipped 不可直接派发
+
+    unskipped = client.post(f"/publish-queue/{item['id']}/unskip")
+    assert unskipped.status_code == 200
+    assert unskipped.json()["status"] == "pending"
+
+    _override_adapter(_FakeAdapter(_DRAFT_OK))
+    assert client.post(f"/publish-queue/{item['id']}/publish").status_code == 200
+
+    confirmed = client.post(f"/publish-queue/{item['id']}/confirm")
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "published"
+    assert confirmed.json()["publish_result"] == "人工确认已发布"
+
+
+def test_queue_action_409_on_wrong_state(api) -> None:
+    item = _enqueue_one(api)
+
+    assert client.post(f"/publish-queue/{item['id']}/unskip").status_code == 409  # 非 skipped
+    assert client.post(f"/publish-queue/{item['id']}/confirm").status_code == 409  # 非 draft_ready
+
+    assert client.post(f"/publish-queue/{item['id']}/skip").status_code == 200
+    assert client.post(f"/publish-queue/{item['id']}/skip").status_code == 409  # 重复跳过
+    assert client.post("/publish-queue/missing/skip").status_code == 404
+
+
+def test_patch_queue_item_title_updates_production(api) -> None:
+    item = _enqueue_one(api)
+    old_title = client.get("/productions").json()[0]["title"]
+
+    resp = client.patch(f"/publish-queue/{item['id']}", json={"title": "运营改过的标题"})
+    assert resp.status_code == 200
+
+    prods = client.get("/productions").json()
+    assert prods[0]["title"] == "运营改过的标题"
+    assert prods[0]["title"] != old_title
+
+
+def test_patch_queue_item_sort_key_reorders_list(api) -> None:
+    _create_account(daily_quota=5)
+    prod1 = _produce_qualified(api, title="事件一")
+    prod2 = _produce_qualified(api, title="事件二")
+    first = client.post("/pipeline/enqueue", json={"production_id": prod1["id"]}).json()
+    second = client.post("/pipeline/enqueue", json={"production_id": prod2["id"]}).json()
+    assert client.get("/publish-queue").json()[0]["id"] == first["id"]  # 默认 FIFO
+
+    moved = client.patch(f"/publish-queue/{second['id']}", json={"sort_key": -1})
+    assert moved.status_code == 200
+    assert [i["id"] for i in client.get("/publish-queue").json()] == [second["id"], first["id"]]
+
+    both = client.patch(f"/publish-queue/{first['id']}", json={"title": "新标题", "sort_key": -5})
+    assert both.status_code == 200  # 标题与排序可同时更新
+    assert [i["id"] for i in client.get("/publish-queue").json()] == [first["id"], second["id"]]
+
+
+def test_patch_queue_item_400_and_404(api) -> None:
+    item = _enqueue_one(api)
+
+    assert client.patch(f"/publish-queue/{item['id']}", json={}).status_code == 400  # 空载荷
+    assert client.patch("/publish-queue/missing", json={"title": "x"}).status_code == 404
+
+
+def test_account_delete_blocked_by_draft_ready(api) -> None:
+    acc = _create_account(role="experiment")
+    prod = _produce_qualified(api)
+    item = client.post("/pipeline/enqueue", json={"production_id": prod["id"]}).json()
+    assert item["account_id"] == acc["id"]  # 实验域账号唯一可用，分配给它
+    _override_adapter(_FakeAdapter(_DRAFT_OK))
+    assert client.post(f"/publish-queue/{item['id']}/publish").status_code == 200
+
+    resp = client.delete(f"/accounts/{acc['id']}")
+    assert resp.status_code == 409  # 草稿待发布仍占用账号

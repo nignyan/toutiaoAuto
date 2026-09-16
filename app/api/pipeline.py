@@ -1,4 +1,4 @@
-"""管道相关 API：采集触发、事件查询、素材补录、内容生产、账号分配与发布队列。"""
+"""管道相关 API：采集、事件、素材、生产、账号、发布队列与发布执行。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -38,9 +38,18 @@ from app.pipeline.collector import (
     fetch_signals,
 )
 from app.pipeline.composer import ContentComposer, TemplateComposer
+from app.pipeline.dispatcher import (
+    DispatchError,
+    confirm_published,
+    dispatch_item,
+    skip_item,
+    unskip_item,
+)
 from app.pipeline.format_decision import decide_format
 from app.pipeline.producer import ProducerError, produce_all, produce_for_event
 from app.pipeline.wait_queue import archive_expired
+from app.publish.adapter import PublishAdapter
+from app.publish.toutiao_draft import ToutiaoDraftAdapter
 
 router = APIRouter(tags=["pipeline"])
 
@@ -59,6 +68,11 @@ def get_sources() -> list[SignalSource]:
 def get_composer() -> ContentComposer:
     """composer 工厂（D9 方案 C）；测试用 dependency_overrides 注入替身。"""
     return TemplateComposer()
+
+
+def get_adapter() -> PublishAdapter:
+    """发布适配器工厂（D13）；测试用 dependency_overrides 注入替身。"""
+    return ToutiaoDraftAdapter()
 
 
 # ---- 请求/响应模型 ----
@@ -157,6 +171,13 @@ class EnqueueAllResponse(BaseModel):
 class WaitQueueTimeoutResponse(BaseModel):
     archived: list[Event]
     checked: int  # 扫描的等待中事件数
+
+
+class QueueItemUpdateRequest(BaseModel):
+    """队列项部分更新：行内改标题（落到成品）/ 调整排序，至少显式传入一项。"""
+
+    title: str | None = None
+    sort_key: int | None = None
 
 
 # ---- 端点 ----
@@ -315,15 +336,19 @@ def update_account(
 
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: str, db: DB = Depends(get_db)) -> dict[str, bool]:
-    """删除账号：仅实验域可删（产品口径）；存在待发布队列项时拒绝。"""
+    """删除账号：仅实验域可删（产品口径）；存在待发布/待确认队列项时拒绝。"""
     account = AccountDao(db).get(account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="账号不存在")
     if account.role != AccountRole.EXPERIMENT:
         raise HTTPException(status_code=409, detail="仅实验域账号可删除")
     queue_dao = PublishQueueDao(db)
-    if queue_dao.count_for_account(account_id, status=PublishStatus.PENDING) > 0:
-        raise HTTPException(status_code=409, detail="账号存在待发布队列项，不可删除")
+    blocking = sum(
+        queue_dao.count_for_account(account_id, status=s)
+        for s in (PublishStatus.PENDING, PublishStatus.DRAFT_READY)
+    )
+    if blocking > 0:
+        raise HTTPException(status_code=409, detail="账号存在待发布/待确认队列项，不可删除")
     AccountDao(db).delete(account_id)
     return {"deleted": True}
 
@@ -367,5 +392,82 @@ def list_publish_queue(
     limit: int = 50,
     db: DB = Depends(get_db),
 ) -> list[PublishQueueItem]:
-    """待发布队列（入队顺序 FIFO），可按账号/状态过滤。"""
+    """待发布队列（sort_key 升序，默认退化入队序 FIFO），可按账号/状态过滤。"""
     return PublishQueueDao(db).list(account_id=account_id, status=status, limit=limit)
+
+
+# ---- 发布执行（规格 D13 §5）----
+
+def _dispatch_error(exc: DispatchError) -> HTTPException:
+    code = 404 if exc.kind == "not_found" else 409
+    return HTTPException(status_code=code, detail=str(exc))
+
+
+@router.post("/publish-queue/{item_id}/publish", response_model=PublishQueueItem)
+def publish_queue_item(
+    item_id: str,
+    db: DB = Depends(get_db),
+    adapter: PublishAdapter = Depends(get_adapter),
+) -> PublishQueueItem:
+    """派发单条队列项到发布适配器（RPA 填稿/自动发布），结果落库。
+
+    200 派发完成（draft_ready/published/failed 均属完成）；
+    404 队列项不存在；409 状态守卫（仅 pending/failed 可派发）。
+    """
+    try:
+        return dispatch_item(db, item_id, adapter)
+    except DispatchError as exc:
+        raise _dispatch_error(exc) from exc
+
+
+@router.post("/publish-queue/{item_id}/skip", response_model=PublishQueueItem)
+def skip_queue_item(item_id: str, db: DB = Depends(get_db)) -> PublishQueueItem:
+    """跳过队列项（可撤销）；404 不存在；409 非 pending。"""
+    try:
+        return skip_item(db, item_id)
+    except DispatchError as exc:
+        raise _dispatch_error(exc) from exc
+
+
+@router.post("/publish-queue/{item_id}/unskip", response_model=PublishQueueItem)
+def unskip_queue_item(item_id: str, db: DB = Depends(get_db)) -> PublishQueueItem:
+    """撤销跳过，回到待发布；404 不存在；409 非 skipped。"""
+    try:
+        return unskip_item(db, item_id)
+    except DispatchError as exc:
+        raise _dispatch_error(exc) from exc
+
+
+@router.post("/publish-queue/{item_id}/confirm", response_model=PublishQueueItem)
+def confirm_queue_item(item_id: str, db: DB = Depends(get_db)) -> PublishQueueItem:
+    """人工确认已发布（头条后台点完发布后回系统记录）；404；409 非 draft_ready。"""
+    try:
+        return confirm_published(db, item_id)
+    except DispatchError as exc:
+        raise _dispatch_error(exc) from exc
+
+
+@router.patch("/publish-queue/{item_id}", response_model=PublishQueueItem)
+def update_queue_item(
+    item_id: str, body: QueueItemUpdateRequest, db: DB = Depends(get_db)
+) -> PublishQueueItem:
+    """队列项部分更新：行内改标题（落到成品）/ 调整排序（sort_key），至少一项。
+
+    404 队列项不存在；400 空载荷；409 关联成品缺失（理论不发生）。
+    """
+    queue_dao = PublishQueueDao(db)
+    item = queue_dao.get(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="队列项不存在")
+    if body.title is None and body.sort_key is None:
+        raise HTTPException(status_code=400, detail="至少提供 title 或 sort_key 之一")
+    if body.title is not None and ProductionDao(db).get(item.production_id) is None:
+        raise HTTPException(status_code=409, detail="关联成品不存在")  # 事务外预检（锁不可重入）
+
+    with db.transaction() as conn:  # 改标题（production）与排序（队列）跨表原子
+        if body.title is not None:
+            ProductionDao(db).update_title_with(conn, item.production_id, body.title)
+        if body.sort_key is not None:
+            queue_dao.update_sort_key_with(conn, item.id, body.sort_key)
+
+    return queue_dao.get(item_id)  # type: ignore[return-value]

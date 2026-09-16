@@ -103,9 +103,11 @@ class PublishQueueDao:
             )
 
     def update_sort_key(self, item_id: str, sort_key: int) -> None:
-        self._db.run(
-            "UPDATE publish_queue SET sort_key = ? WHERE id = ?", (sort_key, item_id)
-        )
+        self._db.run("UPDATE publish_queue SET sort_key = ? WHERE id = ?", (sort_key, item_id))
+
+    def update_sort_key_with(self, conn, item_id: str, sort_key: int) -> None:
+        """在外部事务连接上更新排序（与改标题跨表同事务时使用）。"""
+        conn.execute("UPDATE publish_queue SET sort_key = ? WHERE id = ?", (sort_key, item_id))
 
     def count_by_account_on(self, date_prefix: str) -> dict[str, int]:
         """指定日期（UTC created_at 前缀）各账号的队列条目数，用于当日配额核算。"""
