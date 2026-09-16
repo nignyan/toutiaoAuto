@@ -62,3 +62,11 @@
 - 批量顺序：质量分降序（配额紧张时优质内容优先，与 `produce_all` 分数优先同构）；同层级账号按配置时间升序（先配置者优先）。
 - 发布窗口 MVP 不参与分配判定，队列项 `scheduled_for` 留空；账号删除仅限实验域，且有 PENDING 队列项时拒绝。
 - 规格：`docs/specs/2026-09-16_账号分配与发布队列_设计文档.md`。
+
+## D11 素材等待队列超时归档口径（2026-09-16）
+- 来源：产品设计文档 §4.4（暂缓生产与素材等待队列）；本迭代未单独建规格文档，以本条为口径权威。
+- 等待起点：`Event.deferred_at` 记录进入等待队列时间（模型 validator 兜底：status=DEFERRED 且为空时自动填当前时刻，显式传入不覆盖）；存量库旧 deferred 行无该值时回退 `created_at`。
+- 重试计数：「已重试 n 次」= 等待期间每次素材补录尝试（`ingest_asset` 命中 DEFERRED 事件）计 1 次，落 `deferred_retries`；转 READY 后计数冻结，仅作观察口径。
+- 超时判定：`now - 等待起点` **严格大于** 24 小时（「超过 24 小时」）才归档；纯函数 `expired_deferred` 可测，编排 `archive_expired` 事务批量落库。
+- 归档语义：DEFERRED → ARCHIVED 不可逆（「不再尝试」）：`ingest_asset` 只重评估 DEFERRED 事件，补录素材照常落库但不复活归档事件；produce/enqueue 只取 READY/QUALIFIED，天然不感知归档事件。
+- 触发：仅 API 手动触发 `POST /pipeline/wait-queue/timeout`（幂等，重复调用无副作用），无定时器（沿用 D8/D9/D10 方案一）。

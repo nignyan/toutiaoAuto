@@ -6,7 +6,7 @@
 - 依赖安装：`pip install -e ".[dev]"`（RPA 另装 `pip install -e ".[rpa]"`）
 
 ## 测试与门禁（交付前必须全绿）
-- 全量测试：`python -m pytest`（当前 161 例）
+- 全量测试：`python -m pytest`（当前 175 例）
 - 静态检查：`python -m ruff check .`（E/F/I，行宽 100，零违规）
 - Demo 冒烟：`node demo/smoke.test.mjs`（14 项；不改动 demo/ 时仍需回归）
 
@@ -18,7 +18,8 @@
   3. `POST /pipeline/produce` body `{"event_id": "..."}`（单事件生产；`/pipeline/produce/all` 批量）
   4. `POST /accounts` body `{"name": "主域账号", "daily_quota": 5}`（配置账号；暂停/恢复走 `PATCH /accounts/{id}`；仅实验域可 `DELETE`）
   5. `POST /pipeline/enqueue` body `{"production_id": "..."}`（QUALIFIED 成品分配入队；`/pipeline/enqueue/all` 批量，质量分降序）
-  6. `GET /publish-queue?account_id=...`（待发布队列，FIFO；`GET /productions?status=qualified` 成品捞回）
+  6. `POST /pipeline/wait-queue/timeout`（素材等待队列超时归档：DEFERRED 超 24h 未凑齐素材 → ARCHIVED；幂等可重复调用）
+  7. `GET /publish-queue?account_id=...`（待发布队列，FIFO；`GET /productions?status=qualified` 成品捞回）
 - 头条登录：`python -m app.publish.cli login`（RPA 组，真机校准前 SELECTORS 为占位）
 
 ## 发布/清理

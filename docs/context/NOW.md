@@ -3,8 +3,8 @@
 > 最后更新：2026-09-16
 
 ## 当前阶段
-- 「账号自动分配 + 待发布队列入队」后端已落地（决策 D10，规格见 `docs/specs/2026-09-16_账号分配与发布队列_设计文档.md`）：账号 CRUD（4 端点）→ QUALIFIED 成品按「垂类精确匹配 > 通用主域 > 实验域」分配（测试域/暂停/配额满不参与）→ 队列入队与 `production.account_id` 回填（3 端点）。
-- 下一步：发布执行（队列状态流转 + RPA 填稿联动）；素材等待队列超时归档；头条选择器真机校准（见 RISKS）。
+- 「素材等待队列超时归档」后端已落地（决策 D11，口径见 `DECISIONS.md`，需求源产品设计 §4.4）：DEFERRED 事件超 24 小时未凑齐有效素材 → 归档不再尝试；补录尝试计数、归档事件不可被补录复活。
+- 下一步：发布执行（队列状态流转 + RPA 填稿联动）；头条选择器真机校准（见 RISKS）。
 
 ## 活动里程碑
 - [x] 产品设计定稿（2026-09-15）
@@ -16,6 +16,7 @@
 - [x] 热点采集 → 事件聚类 → 素材入库（collector / clustering / asset_ingest + 4 端点）
 - [x] 内容生产引擎（后端：composer / quality_check / producer + 3 端点，2026-09-16）
 - [x] 账号自动分配 + 待发布队列入队（后端：allocator + 7 端点，2026-09-16）
+- [x] 素材等待队列超时归档（后端：wait_queue + 1 端点，2026-09-16）
 - [ ] 发布执行（队列状态流转 + RPA 填稿联动）
 - [ ] 头条后台选择器实测校准
 
@@ -23,7 +24,6 @@
 - 无。
 
 ## 最近闭环摘要
-- 按 D10 规格分批实现：账号/队列模型 + 表与 DAO + 存量库补列迁移（`4bf5bc7`）→ 分配编排 allocator（`9f0538f`）→ 账号 CRUD + enqueue 7 端点（`0829869`）。
-- 关键实现：分配纯函数 `pick_account`（资格三过滤 + 三层级 + 稳定排序）；入队与账号回填 `db.transaction` 原子；队列 `UNIQUE(production_id)` 兜底 1:1；当日配额按 UTC 日期前缀核算、批量中即时生效；`enqueue_all` 预过滤已入队成品、skipped 只记真实失败。
-- 验证：pytest 161/161（新增 DAO 11 / allocator 17 / API 12）、ruff 零违规、demo 冒烟 14/14。
+- 产品 §4.4 素材等待队列口径落地：`Event.deferred_at`（validator 兜底进入等待队列起点）/ `deferred_retries`（补录尝试计数）字段 + events 表存量库补列；`wait_queue.py` 超时判定纯函数（严格超过 24h，`deferred_at` 缺失回退 `created_at`）+ 事务批量归档编排；`ingest_asset` 对 DEFERRED 事件计重试次数，ARCHIVED 事件补录不复活（「不再尝试」）；API 新增 `POST /pipeline/wait-queue/timeout`（幂等）。
+- 验证：pytest 175/175（新增 14）、ruff 零违规、demo 冒烟 14/14。提交 `612ffef`。
 - 完成项明细见 `history/2026-09.md`。
