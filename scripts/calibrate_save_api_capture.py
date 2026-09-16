@@ -6,7 +6,6 @@ v4 已定位保存 API 为 POST mp/agw/article/publish（填稿后 ~4s 触发）
 并补查 draft_list 的 type 参数变体，排除「存进去了但列表过滤条件不对」。
 """
 
-import json
 import sys
 from pathlib import Path
 

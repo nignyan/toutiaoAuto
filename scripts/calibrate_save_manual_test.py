@@ -77,7 +77,6 @@ def main() -> None:
                 page.wait_for_timeout(3_000)
                 if len(save_hits) > last_count:
                     last_count = len(save_hits)
-                    last_t = save_hits[-1][0]
                 if save_hits and time.time() - save_hits[-1][0] > QUIET_S:
                     log(">> 保存响应已静默 20s，收尾")
                     break

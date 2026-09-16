@@ -32,6 +32,8 @@ class PublishQueueItem(BaseModel):
     status: PublishStatus = PublishStatus.PENDING
     scheduled_for: str = ""
     publish_result: str = ""
+    # 确认发布/自动发布成功时刻（UTC）：数据回流时段分析的基准，非发布路径留空
+    published_at: str = ""
     # 排序键：默认 0 退化为入队序（FIFO）；行内调整后按值升序，同值仍按入队序
     sort_key: int = 0
     created_at: str = Field(default_factory=_now)

@@ -92,6 +92,37 @@ _SCHEMA = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_publish_queue_production"
     " ON publish_queue(production_id)",
     "CREATE INDEX IF NOT EXISTS idx_publish_queue_account ON publish_queue(account_id)",
+    """
+    CREATE TABLE IF NOT EXISTS reflux_records (
+        id TEXT PRIMARY KEY,
+        production_id TEXT NOT NULL,
+        account_id TEXT NOT NULL DEFAULT '',
+        exposure INTEGER NOT NULL DEFAULT 0,
+        plays INTEGER NOT NULL DEFAULT 0,
+        completion_rate REAL NOT NULL DEFAULT 0,
+        interactions INTEGER NOT NULL DEFAULT 0,
+        negative INTEGER NOT NULL DEFAULT 0,
+        review_status TEXT NOT NULL DEFAULT 'pending_review',
+        review_note TEXT NOT NULL DEFAULT '',
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    # 表现记录与成品 1:1，重复回填走 upsert 覆盖
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_reflux_records_production"
+    " ON reflux_records(production_id)",
+    """
+    CREATE TABLE IF NOT EXISTS reflux_suggestions (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL DEFAULT '',
+        basis TEXT NOT NULL DEFAULT '',
+        impact TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        decided_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
 ]
 
 # 存量库补列迁移：CREATE TABLE IF NOT EXISTS 不会更新已存在的表
@@ -101,7 +132,10 @@ _COLUMN_MIGRATIONS = {
         "deferred_retries": "deferred_retries INTEGER NOT NULL DEFAULT 0",
     },
     "production": {"vertical": "vertical TEXT NOT NULL DEFAULT ''"},
-    "publish_queue": {"sort_key": "sort_key INTEGER NOT NULL DEFAULT 0"},
+    "publish_queue": {
+        "sort_key": "sort_key INTEGER NOT NULL DEFAULT 0",
+        "published_at": "published_at TEXT NOT NULL DEFAULT ''",
+    },
 }
 
 

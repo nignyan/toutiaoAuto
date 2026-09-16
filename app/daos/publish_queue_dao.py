@@ -15,6 +15,7 @@ def _to_row(item: PublishQueueItem) -> tuple:
         item.status.value,
         item.scheduled_for,
         item.publish_result,
+        item.published_at,
         item.sort_key,
         item.created_at,
     )
@@ -28,6 +29,7 @@ def _from_row(row) -> PublishQueueItem:
         status=PublishStatus(row["status"]),
         scheduled_for=row["scheduled_for"],
         publish_result=row["publish_result"],
+        published_at=row["published_at"],
         sort_key=row["sort_key"],
         created_at=row["created_at"],
     )
@@ -40,8 +42,8 @@ class PublishQueueDao:
     _INSERT_SQL = (
         "INSERT INTO publish_queue"
         " (id, account_id, production_id, status, scheduled_for, publish_result,"
-        "  sort_key, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "  published_at, sort_key, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
 
     def __init__(self, db: DB) -> None:
@@ -89,18 +91,28 @@ class PublishQueueDao:
         return [_from_row(r) for r in self._db.query(sql, tuple(params))]
 
     def update_status(
-        self, item_id: str, status: PublishStatus, publish_result: str | None = None
+        self,
+        item_id: str,
+        status: PublishStatus,
+        publish_result: str | None = None,
+        published_at: str | None = None,
     ) -> None:
-        """更新状态；publish_result 传 None 时保留原值（跳过/撤销不改写派发记录）。"""
-        if publish_result is None:
-            self._db.run(
-                "UPDATE publish_queue SET status = ? WHERE id = ?", (status.value, item_id)
-            )
-        else:
-            self._db.run(
-                "UPDATE publish_queue SET status = ?, publish_result = ? WHERE id = ?",
-                (status.value, publish_result, item_id),
-            )
+        """更新状态；publish_result/published_at 传 None 时保留原值。
+
+        published_at 仅在转为 published 时由编排层传入当前 UTC 时刻（时段分析基准）。
+        """
+        sets = ["status = ?"]
+        params: list = [status.value]
+        if publish_result is not None:
+            sets.append("publish_result = ?")
+            params.append(publish_result)
+        if published_at is not None:
+            sets.append("published_at = ?")
+            params.append(published_at)
+        params.append(item_id)
+        self._db.run(
+            f"UPDATE publish_queue SET {', '.join(sets)} WHERE id = ?", tuple(params)
+        )
 
     def update_sort_key(self, item_id: str, sort_key: int) -> None:
         self._db.run("UPDATE publish_queue SET sort_key = ? WHERE id = ?", (sort_key, item_id))
