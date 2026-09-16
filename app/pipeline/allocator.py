@@ -107,13 +107,20 @@ def allocate_for_production(db: DB, production_id: str) -> PublishQueueItem:
 
 
 def enqueue_all(db: DB) -> EnqueueAllReport:
-    """批量入队全部未入队的 QUALIFIED 成品（质量分降序），失败进 skipped 不中断。"""
+    """批量入队全部未入队的 QUALIFIED 成品（质量分降序），失败进 skipped 不中断。
+
+    已入队成品不进入本轮处理（skipped 只记录真实失败）；
+    allocate 内部的 already_enqueued 防御仍在，兜底并发窗口。
+    """
     enqueued: list[PublishQueueItem] = []
     skipped: list[EnqueueSkip] = []
-    prods = sorted(
-        ProductionDao(db).list(status=QualityStatus.QUALIFIED),
-        key=lambda p: (-p.quality_score, p.created_at),
-    )
+    queued = {item.production_id for item in PublishQueueDao(db).list()}
+    prods = [
+        p
+        for p in ProductionDao(db).list(status=QualityStatus.QUALIFIED)
+        if p.id not in queued
+    ]
+    prods.sort(key=lambda p: (-p.quality_score, p.created_at))
     for prod in prods:
         try:
             enqueued.append(allocate_for_production(db, prod.id))

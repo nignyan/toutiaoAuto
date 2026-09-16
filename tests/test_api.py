@@ -165,7 +165,7 @@ def test_add_asset_rejects_invalid_density(api) -> None:
 
 # ---- 内容生产 API ----
 
-def _seed_ready(db: DB, n_assets: int = 2, **event_kw) -> Event:
+def _seed_ready(db: DB, n_assets: int = 2, density_base: float = 70.0, **event_kw) -> Event:
     ev = Event(
         title=event_kw.pop("title", "某地突发山火，救援进行中"),
         timeline=event_kw.pop(
@@ -186,7 +186,7 @@ def _seed_ready(db: DB, n_assets: int = 2, **event_kw) -> Event:
                 source_type=SourceType.A,
                 auth_status=AuthStatus.CLEARED,
                 attribution="来源：合作媒体",
-                info_density=70.0 + 10.0 * i,
+                info_density=density_base + 10.0 * i,
             )
         )
     return ev
@@ -280,3 +280,137 @@ def test_productions_list_and_status_filter(api) -> None:
 def test_productions_rejects_invalid_status(api) -> None:
     resp = client.get("/productions", params={"status": "whatever"})
     assert resp.status_code == 422
+
+
+# ---- 账号矩阵与分配入队（D10）----
+
+def _create_account(**overrides) -> dict:
+    body = {"name": "主域账号", "daily_quota": 2, **overrides}
+    resp = client.post("/accounts", json=body)
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def _produce_qualified(api: DB, title: str = "某地突发山火，救援进行中", **seed_kw) -> dict:
+    ev = _seed_ready(api, title=title, **seed_kw)
+    resp = client.post("/pipeline/produce", json={"event_id": ev.id})
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_account_create_list_update_delete(api) -> None:
+    acc = _create_account(vertical="科技", role="experiment")
+    assert acc["role"] == "experiment"
+    assert acc["daily_quota"] == 2
+    assert acc["auto_publish"] is False  # 自动发布默认关闭（D5）
+
+    assert [a["id"] for a in client.get("/accounts").json()] == [acc["id"]]
+
+    paused = client.patch(f"/accounts/{acc['id']}", json={"status": "inactive"})
+    assert paused.json()["status"] == "inactive"
+    assert client.get("/accounts", params={"status": "active"}).json() == []
+
+    patched = client.patch(f"/accounts/{acc['id']}", json={"daily_quota": 5, "name": "改名"})
+    assert patched.json()["daily_quota"] == 5  # 部分字段更新，其余不受影响
+    assert patched.json()["vertical"] == "科技"
+
+    deleted = client.delete(f"/accounts/{acc['id']}")
+    assert deleted.status_code == 200 and deleted.json() == {"deleted": True}
+    assert client.get("/accounts").json() == []
+
+
+def test_account_create_422_missing_name(api) -> None:
+    assert client.post("/accounts", json={}).status_code == 422
+
+
+def test_account_update_delete_404(api) -> None:
+    assert client.patch("/accounts/missing", json={"name": "x"}).status_code == 404
+    assert client.delete("/accounts/missing").status_code == 404
+
+
+def test_account_delete_rejects_non_experiment(api) -> None:
+    acc = _create_account(role="primary")
+
+    assert client.delete(f"/accounts/{acc['id']}").status_code == 409  # 仅实验域可删
+
+
+def test_account_delete_rejects_with_pending_queue(api) -> None:
+    acc = _create_account(role="experiment")
+    _produce_qualified(api)
+    prod = client.get("/productions", params={"status": "qualified"}).json()[0]
+    enqueue = client.post("/pipeline/enqueue", json={"production_id": prod["id"]})
+    assert enqueue.status_code == 200
+
+    assert client.delete(f"/accounts/{acc['id']}").status_code == 409  # 有待发布队列项
+
+
+def test_enqueue_endpoint_200_and_backfill(api) -> None:
+    acc = _create_account()
+    prod = _produce_qualified(api)
+
+    resp = client.post("/pipeline/enqueue", json={"production_id": prod["id"]})
+    assert resp.status_code == 200
+    item = resp.json()
+    assert item["account_id"] == acc["id"]
+    assert item["production_id"] == prod["id"]
+    assert item["status"] == "pending"
+
+    refreshed = client.get("/productions").json()[0]
+    assert refreshed["account_id"] == acc["id"]  # 分配账号回填
+
+    queue = client.get("/publish-queue").json()
+    assert [i["id"] for i in queue] == [item["id"]]  # 队列可查
+    assert len(client.get("/publish-queue", params={"account_id": acc["id"]}).json()) == 1
+
+
+def test_enqueue_endpoint_404_unknown_production(api) -> None:
+    assert client.post("/pipeline/enqueue", json={"production_id": "missing"}).status_code == 404
+
+
+def test_enqueue_endpoint_409_repeats_and_non_qualified(api) -> None:
+    _create_account()
+    prod = _produce_qualified(api)
+
+    assert client.post("/pipeline/enqueue", json={"production_id": prod["id"]}).status_code == 200
+    resp = client.post("/pipeline/enqueue", json={"production_id": prod["id"]})
+    assert resp.status_code == 409  # 已入队
+
+    blocked = _produce_qualified(api, title="时间线缺失", timeline=[])  # → BLOCKED
+    resp = client.post("/pipeline/enqueue", json={"production_id": blocked["id"]})
+    assert resp.status_code == 409  # 非 QUALIFIED
+
+
+def test_enqueue_endpoint_409_without_account(api) -> None:
+    prod = _produce_qualified(api)  # 未配置任何账号
+
+    assert client.post("/pipeline/enqueue", json={"production_id": prod["id"]}).status_code == 409
+
+
+def test_enqueue_endpoint_422_missing_body(api) -> None:
+    assert client.post("/pipeline/enqueue").status_code == 422
+
+
+def test_enqueue_all_endpoint_quota_and_skip(api) -> None:
+    _create_account(daily_quota=1)
+    _produce_qualified(api, title="事件一")
+    _produce_qualified(api, title="事件二")
+
+    body = client.post("/pipeline/enqueue/all").json()
+    assert len(body["enqueued"]) == 1  # 配额 1 只入一单
+    assert len(body["skipped"]) == 1
+    assert body["skipped"][0]["reason"] == "no_account"
+
+    again = client.post("/pipeline/enqueue/all").json()
+    assert again["enqueued"] == []  # 重复批量不重复入队
+    assert len(again["skipped"]) == 1
+
+
+def test_enqueue_all_endpoint_ignores_non_qualified(api) -> None:
+    _create_account(daily_quota=5)
+    _produce_qualified(api, title="正常事件")
+    _produce_qualified(api, title="时间线缺失", timeline=[])  # BLOCKED
+    _produce_qualified(api, title="held 事件标题超过十个字以便触发扣分", density_base=0.0)  # HELD
+
+    body = client.post("/pipeline/enqueue/all").json()
+    assert len(body["enqueued"]) == 1  # 仅 QUALIFIED 入队
+    assert body["skipped"] == []

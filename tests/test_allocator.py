@@ -219,20 +219,18 @@ def test_enqueue_all_skips_when_quota_exhausted(db, account_dao, production_dao)
     assert [(s.production_id, s.reason) for s in report.skipped] == [("p_second", "no_account")]
 
 
-def test_enqueue_all_ignores_non_qualified_and_continues(
+def test_enqueue_all_excludes_already_enqueued(
     db, account_dao, production_dao, queue_dao
 ) -> None:
     account_dao.upsert(_account(daily_quota=5))
     production_dao.insert(_prod("p_ok", quality_score=90.0))
-    production_dao.insert(_prod("p_held", quality_status=QualityStatus.HELD))
-    production_dao.insert(_prod("p_blocked", quality_status=QualityStatus.BLOCKED))
-    queue_dao.insert(_queue_entry_for("p_dup"))  # 已有队列项 → already_enqueued
     production_dao.insert(_prod("p_dup", quality_score=85.0))
+    queue_dao.insert(_queue_entry_for("p_dup"))  # 已入队成品不进入本轮处理
 
     report = enqueue_all(db)
 
     assert [i.production_id for i in report.enqueued] == ["p_ok"]
-    assert [(s.production_id, s.reason) for s in report.skipped] == [("p_dup", "already_enqueued")]
+    assert report.skipped == []  # skipped 只记录真实失败
 
 
 def test_enqueue_all_empty_without_qualified(db) -> None:
