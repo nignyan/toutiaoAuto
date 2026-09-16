@@ -24,6 +24,6 @@
 - 无。
 
 ## 最近闭环摘要
-- 产品 §4.4 素材等待队列口径落地：`Event.deferred_at`（validator 兜底进入等待队列起点）/ `deferred_retries`（补录尝试计数）字段 + events 表存量库补列；`wait_queue.py` 超时判定纯函数（严格超过 24h，`deferred_at` 缺失回退 `created_at`）+ 事务批量归档编排；`ingest_asset` 对 DEFERRED 事件计重试次数，ARCHIVED 事件补录不复活（「不再尝试」）；API 新增 `POST /pipeline/wait-queue/timeout`（幂等）。
-- 验证：pytest 175/175（新增 14）、ruff 零违规、demo 冒烟 14/14。提交 `612ffef`。
+- 内容生产引擎复审收口（grill 拷问，决策 D12，后端零代码改动）：HELD 成品 MVP 降级「留档 + 人工捞回」（产品 §4.5「次日重试」自动化列演进项）；确认一次性生产（时效优先）、署名素材级从严、质量分均值公式三项既有口径，局限与「均值 vs 高密度」语义错位记入 RISKS.md；多版本产出、重复检测、风险标签 + 待确认队列、标题与脚本一致性、LLM composer 显式标记暂不做；demo 质检文案同步（留档·人工捞回）。
+- 验证：后端无代码变化（pytest 175 例不重跑），demo 冒烟 14/14。提交哈希见 `history/2026-09.md`。
 - 完成项明细见 `history/2026-09.md`。
