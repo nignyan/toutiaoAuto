@@ -98,3 +98,14 @@
 - 配置接线：构造器 `cdp_endpoint`；CLI `--cdp-endpoint`（留空回读环境变量 `TOUTIAO_CDP_ENDPOINT`）；API 工厂 `get_adapter` 同样回读该环境变量；两种测试注入（`browser_factory`/`cdp_browser_factory`）互不影响。
 - 图文选择器 5 键已真机校准（登录入口按钮 / 图文发布页 URL / 标题 textarea / 正文 .ProseMirror / 「预览并发布」消歧），集中在 `SELECTORS`；视频链路、tag、存草稿按钮仍为占位（MVP 出界）。
 - 遗留清理：探针草稿（校准探测 v4/v4c/v4d/v5 等）需人工在头条草稿箱删除；探针脚本 `scripts/calibrate_*.py` 为一次性工具，用后可删。
+
+## D15 数据回流口径（2026-09-16 用户拍板）
+- 范围：产品 §4.7（MVP 仅建议动作）+ §4.6「记录审核状态」（D13 移交）；规格见 `docs/specs/2026-09-16_数据回流_设计文档.md`。
+- 数据来源：头条号无个人 API、数据页 RPA 抓取未校准，表现数据（曝光/播放/完播率/互动/负反馈）由运营**人工回填**；每成品**单条记录 upsert**（拍板：重复回填覆盖取最新，id/created_at 保留）。
+- 守卫：仅队列 `published` 成品可回填（404 成品不存在 / 409 未发布）；审核状态（pending_review/approved/rejected）随记录落库。
+- 发布时刻：`publish_queue.published_at` 由 confirm/auto_publish 成功路径落库（UTC），供时段分析；失败/跳过不落值。
+- 建议状态机（拍板）：`pending → confirmed`（采纳留痕）/ `pending → rejected`（驳回终态）/ `confirmed → pending`（**回滚回到待确认，可再采纳**）；decided_at 首次决策时落、回滚不清除。
+- 建议生成（确定性，无 LLM）：四维聚合（形态/时段 4 桶/垂类/标题长度 3 桶），排序基准 = 互动率（Σ互动/Σ曝光）；触发条件：组样本 ≥2、最优/最差互动率相对差 ≥30% 且绝对差 ≥1pp、最差组 >0；每维度至多 1 条；垂类排除「通用」且需 ≥2 个非通用垂类。常量 `MIN_GROUP_SAMPLE`/`MIN_RELATIVE_GAP` 可调。
+- analyze 语义：删除全部 pending 后重建（原子事务），confirmed/rejected 保留作决策历史；数据未变时重复 analyze 产生同文 pending 项属预期，MVP 不去重。
+- 出界：自动调参（D3，§7 演进项）、表现数据自动采集、多次快照、素材来源单列分析、LLM 文案。
+- 工程教训：记录 DAO 排序列曾误用 created_at，回填时间维度应显式分列排序（`recorded_at`）。

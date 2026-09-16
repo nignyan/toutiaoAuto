@@ -6,8 +6,8 @@
 - 依赖安装：`pip install -e ".[dev]"`（RPA 另装 `pip install -e ".[rpa]"`）
 
 ## 测试与门禁（交付前必须全绿）
-- 全量测试：`python -m pytest`（当前 221 例）
-- 静态检查：`python -m ruff check .`（E/F/I，行宽 100，零违规）
+- 全量测试：`python -m pytest`（当前 284 例）
+- 静态检查：`python -m ruff check .`（E/F/I，行宽 100，零违规；`.scratch/` 证据区已排除）
 - Demo 冒烟：`node demo/smoke.test.mjs`（14 项；不改动 demo/ 时仍需回归）
 
 ## 运行
@@ -22,6 +22,9 @@
   7. `POST /publish-queue/{item_id}/confirm`（头条后台人工点发布后回系统确认 → published）；`/skip`+`/unskip` 跳过可撤销；`PATCH /publish-queue/{item_id}` 改标题/调 sort_key 排序
   8. `POST /pipeline/wait-queue/timeout`（素材等待队列超时归档：DEFERRED 超 24h 未凑齐素材 → ARCHIVED；幂等可重复调用）
   9. `GET /publish-queue?account_id=...`（待发布队列，sort_key 升序默认 FIFO；`GET /productions?status=qualified` 成品捞回）
+  10. `POST /reflux/records` body `{"production_id": "...", "exposure": 1000, "plays": 500, "completion_rate": 45.0, "interactions": 80, "negative": 2, "review_status": "approved"}`（表现数据人工回填，upsert 取最新；仅 published 成品可回填，409 未发布/404 不存在）
+  11. `POST /reflux/analyze`（重算四维分析并重建待确认建议；`GET /reflux/analysis` 只读报告）
+  12. `GET /reflux/suggestions?status=pending` + `POST /reflux/suggestions/{id}/confirm|reject|rollback`（建议动作人工决策；回滚回到待确认可再采纳，MVP 仅留痕不调参）
 - 头条 CDP Chrome 启动（专用 profile；Chrome 136+ 不允许默认 profile 开调试端口，登录态与日常 Chrome 不互通）：
   `"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="D:\Codex\project1\.profiles\cdp_chrome" --no-first-run --no-default-browser-check https://mp.toutiao.com/`
   首次在该窗口内登录头条号（`.profiles/` 已入 .gitignore，登录态不入库）
