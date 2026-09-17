@@ -95,10 +95,11 @@ def get_adapter() -> PublishAdapter:
     return ToutiaoDraftAdapter(cdp_endpoint=os.environ.get("TOUTIAO_CDP_ENDPOINT") or None)
 
 
-def get_local_media() -> LocalMedia:
-    """本地媒体文件注入点（素材本地化）；MVP 未做，默认空，视频会因缺
-    video_path 而落 failed。测试用 dependency_overrides 注入假文件。"""
-    return LocalMedia()
+def get_local_media() -> LocalMedia | None:
+    """本地媒体文件注入点：默认 None，视频派发时由 dispatcher 自动执行
+    素材本地化（下载远程素材到 data/media/，失败落 failed）。测试用
+    dependency_overrides 注入 LocalMedia 可强制指定路径、跳过下载。"""
+    return None
 
 
 # ---- 请求/响应模型 ----
@@ -463,7 +464,7 @@ def publish_queue_item(
     item_id: str,
     db: DB = Depends(get_db),
     adapter: PublishAdapter = Depends(get_adapter),
-    local_media: LocalMedia = Depends(get_local_media),
+    local_media: LocalMedia | None = Depends(get_local_media),
 ) -> PublishQueueItem:
     """派发单条队列项到发布适配器（RPA 填稿/自动发布），结果落库。
 
@@ -481,7 +482,7 @@ def publish_queue_item_now(
     item_id: str,
     db: DB = Depends(get_db),
     adapter: PublishAdapter = Depends(get_adapter),
-    local_media: LocalMedia = Depends(get_local_media),
+    local_media: LocalMedia | None = Depends(get_local_media),
 ) -> PublishQueueItem:
     """本系统触发视频发布（半自动的人工确认动作，内部强制点发布）。
 

@@ -134,3 +134,12 @@
 - 视频适配器：回填 D16 选择器（video_upload / video_title_input / video_cover / video_publish_btn），删除 `save_draft_btn` 坏分支；新增 `list_published_titles` + `_parse_published_titles`。
 - 出界/待办：素材本地化（产本地视频/封面）仍拆出独立迭代。
 - 已发布列表真机校准（2026-09-17 收尾）：`published_list_url` = `/mp/agw/creator_center/list/v2?status=2&type=0&page_size=20&need_stat=true&wenda_type=1&app_id=1231`（作品管理页自身请求，直查与页面捕获双验证）；标题字段 `contents[].article_attr.title`，`status=2`=已发布，`type` 1=微头条/2=文章（文章+微头条一并返回，轮询按标题精确匹配互不干扰）。`_parse_published_titles` 解析异常/code 非 0 一律返回空（不误确认）；`list_published_titles` 仅 CDP 模式生效（fetch 同源需页面凭据），profile 模式与未登录返回空。探针证据 `.scratch/selector-calibration/published_list*_check.txt`。
+
+## D18 素材本地化口径（2026-09-17 用户拍板）
+- 范围：视频真实发布前置（NOW.md 拆出的独立迭代）。MVP 只做**远程素材下载落地**——本系统不生成 AI 画面，视频/图片均来自原始媒体资产；自动剪辑（裁竖版/字幕/解说/成片合成）属产品演进项。
+- 模块：`media_localizer.py`（resolve_targets 纯函数 + localize_media 编排 + LocalizationError 三类 no_video/no_url/download_failed）；`LocalMedia` 定义移入该模块，dispatcher 再导出保持既有导入路径。
+- 目标解析：视频按 `prod.asset_ids` 编排顺序取第一个 usable 视频（缺失抛 no_video）；封面仅当 `cover_asset_id` 指向 usable 图片素材时下载（指向视频本身则不取）。IMAGE_SLIDESHOW 退化图文（D17）无需本地文件，不触发下载。
+- 文件生命周期：`data/media/` 按 `<asset_id><ext>` 持久缓存（ext 从 URL 后缀解析，回退 .mp4/.jpg），已存在且非空即复用——重试幂等、跨成品共享同素材；MVP 不自动清理（列演进项）；`data/` 已加入 .gitignore。
+- 接线：`_dispatch_with` 在 `local_media=None` 且 VIDEO 形态时自动本地化，失败落 failed（publish_result 含「素材本地化失败」），不冒泡 5xx、不投适配器；调用方显式传入 LocalMedia 时跳过下载（测试替身路径不变）。API `get_local_media` 默认返回 None；端点类型 `LocalMedia | None`。
+- 下载：httpx（collector 已有依赖，零新增），timeout 60s，follow_redirects；fetch 可注入测试。
+- 出界（不在本迭代）：视频页封面 `.xigua-poster-editor` 内部 file input 校准（D16 遗留 P1，本地化已产出 cover_path，等校准后接线真实上传）；素材自动清理；图片素材下载（图文分支不填图）。

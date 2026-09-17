@@ -4,9 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from app.daos import DB, AccountDao, ProductionDao, PublishQueueDao
+from app.daos import DB, AccountDao, MediaAssetDao, ProductionDao, PublishQueueDao
 from app.models import (
     Account,
+    AuthStatus,
+    MediaAsset,
+    MediaType,
     Production,
     ProductionType,
     PublishQueueItem,
@@ -70,6 +73,7 @@ def _production(db: DB, **kw) -> Production:
         production_type=kw.pop("production_type", ProductionType.IMAGE_SLIDESHOW),
         title=kw.pop("title", "多图直击：测试事件"),
         body=kw.pop("body", "【事件】测试事件\n\n【时间线】\n- 08:00 信号"),
+        asset_ids=kw.pop("asset_ids", []),
         quality_score=kw.pop("quality_score", 80.0),
         quality_status=kw.pop("quality_status", QualityStatus.QUALIFIED),
     )
@@ -307,8 +311,8 @@ def test_confirm_rejects_non_draft_ready(db) -> None:
 
 # ---- 视频链路（dispatch_item 拦截 + dispatch_item_now）----
 
-def _video_production(db) -> Production:
-    return _production(db, production_type=ProductionType.VIDEO)
+def _video_production(db, **kw) -> Production:
+    return _production(db, production_type=ProductionType.VIDEO, **kw)
 
 
 def test_dispatch_video_semi_auto_rejected(db) -> None:
@@ -345,6 +349,48 @@ def test_dispatch_item_now_video_forces_publish(db) -> None:
     _, got_acc = adapter.calls[0]
     assert got_acc.auto_publish is True  # 半自动人工确认 = 强制点发布
     assert got_acc.id == acc.id
+
+
+def test_dispatch_video_auto_localizes_without_injected_media(db, tmp_path, monkeypatch) -> None:
+    """不传 local_media 时视频派发自动执行素材本地化（下载远程素材）。"""
+    _account(db, auto_publish=True)
+    _video_production(db, asset_ids=["v1"])
+    MediaAssetDao(db).insert(
+        MediaAsset(
+            id="v1",
+            event_id="ev1",
+            type=MediaType.VIDEO,
+            source_url="https://x/video.mp4",
+            auth_status=AuthStatus.CLEARED,
+        )
+    )
+    monkeypatch.chdir(tmp_path)  # 隔离默认根目录 data/media/
+    monkeypatch.setattr(
+        "app.pipeline.media_localizer._default_fetch", lambda url: b"VIDEO"
+    )
+    item = _enqueue(db)
+    adapter = FakeAdapter(PublishResult(status=AdapterStatus.PUBLISHED, message="已自动发布"))
+
+    out = dispatch_item(db, item.id, adapter)  # 不传 local_media
+
+    assert out.status == PublishStatus.PUBLISHED
+    pkg, _ = adapter.calls[0]
+    assert pkg.video_path == Path("data/media/v1.mp4")
+    assert pkg.video_path.read_bytes() == b"VIDEO"
+
+
+def test_dispatch_video_localization_failure_records_failed(db) -> None:
+    """素材本地化失败（无可用视频素材）落 failed，不冒泡、不投适配器。"""
+    _account(db, auto_publish=True)
+    _video_production(db, asset_ids=["ghost"])  # asset_ids 指向不存在的素材
+    item = _enqueue(db)
+    adapter = FakeAdapter(PublishResult(status=AdapterStatus.PUBLISHED, message="已自动发布"))
+
+    out = dispatch_item(db, item.id, adapter)
+
+    assert out.status == PublishStatus.FAILED
+    assert "素材本地化失败" in out.publish_result
+    assert adapter.calls == []
 
 
 def test_dispatch_item_now_rejects_non_video(db) -> None:

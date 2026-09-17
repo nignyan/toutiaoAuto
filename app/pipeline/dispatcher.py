@@ -5,12 +5,15 @@ dispatch_item 把一条队列项派发到 PublishAdapter：由 Production 构建
 纯状态流转。与 producer/allocator 同构：错误类型 + 纯函数 + 编排函数。
 """
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 
 from app.daos import DB, AccountDao, ProductionDao, PublishQueueDao
 from app.models import Production, ProductionType, PublishQueueItem, PublishStatus
+from app.pipeline.media_localizer import (
+    LocalizationError,
+    LocalMedia,
+    localize_media,
+)
 from app.publish.adapter import (
     ContentFormat,
     ContentPackage,
@@ -50,20 +53,6 @@ def map_result(result: PublishResult) -> PublishStatus:
     return _RESULT_MAP[result.status]
 
 
-@dataclass
-class LocalMedia:
-    """本地媒体文件路径（素材本地化的注入点）。
-
-    MVP 尚未做素材本地化：默认全空，视频形态会因缺 video_path 被
-    ContentPackage 校验拦截（落 failed，正确失败而非误发）。素材本地化
-    迭代完成后由 get_local_media 依赖注入真实路径。
-    """
-
-    video_path: Path | None = None
-    cover_path: Path | None = None
-    image_paths: list[Path] = field(default_factory=list)
-
-
 # 生产形态 → 投递内容包形态的显式映射（生产侧 ProductionType 与投递侧
 # ContentFormat 命名不同，此处单点对齐，不合并两套枚举）。
 _FORMAT_MAP = {
@@ -78,9 +67,9 @@ def build_package(
 ) -> ContentPackage:
     """由成品构建标准内容包（纯函数）。
 
-    按 production_type 决定内容包形态；视频/图集本地媒体文件来自 local_media
-    （素材本地化注入点，默认空）。视频缺 video_path 会触发 ContentPackage
-    校验失败，由调用方落 failed。
+    按 production_type 决定内容包形态；视频本地媒体文件来自 local_media
+    （素材本地化产物或调用方显式注入）。视频缺 video_path 会触发
+    ContentPackage 校验失败，由调用方落 failed。
     """
     fmt = _FORMAT_MAP[production.production_type]
     media = local_media or LocalMedia()
@@ -158,6 +147,14 @@ def _dispatch_with(
     local_media: LocalMedia | None = None,
 ) -> PublishQueueItem:
     """构建内容包并投递适配器，结果落库（dispatch_item / dispatch_item_now 共用）。"""
+    if local_media is None and prod.production_type == ProductionType.VIDEO:
+        # 素材本地化：视频派发时自动下载远程素材；失败落 failed（原因可见），
+        # 不冒泡为 5xx；调用方显式传入 local_media 时跳过下载。
+        try:
+            local_media = localize_media(db, prod)
+        except LocalizationError as exc:
+            return _record_failure(db, item, f"素材本地化失败: {exc}")
+
     try:
         package = build_package(prod, local_media)
     except Exception as exc:  # noqa: BLE001 内容包校验失败（如正文为空）按失败落库
