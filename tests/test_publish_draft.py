@@ -57,6 +57,11 @@ class FakePage:
     def click(self, selector: str, timeout: int = 0) -> None:
         self.calls.append(("click", selector))
 
+    def query_selector(self, selector: str):
+        """默认返回 None（无裁剪按钮/无二次确认），子类可覆写记录命中。"""
+        self.calls.append(("query_selector", selector))
+        return None
+
     def wait_for_timeout(self, timeout: int) -> None:
         self.calls.append(("wait_for_timeout", timeout))
 
@@ -80,6 +85,16 @@ class FakeCtx:
 
     def __exit__(self, *exc):
         return False
+
+
+class ClickableFake:
+    """query_selector 命中的元素替身：记录一次 click。"""
+
+    def __init__(self, calls: list):
+        self._calls = calls
+
+    def click(self, timeout: int = 0) -> None:
+        self._calls.append(("click", "element"))
 
 
 def make_adapter(page: FakePage) -> ToutiaoDraftAdapter:
@@ -138,18 +153,61 @@ def test_video_fill_draft_order_upload_title_cover():
     page = FakePage(logged_in=True)
     make_adapter(page).publish(video_package(), make_account())
 
-    kinds = [
-        c[0]
-        for c in page.calls
-        if c[0] not in ("wait_for_selector", "wait_for_url", "wait_for_timeout")
-    ]
-    assert kinds == ["goto", "set_input_files", "fill", "click", "click"]
     ops = [c for c in page.calls]
     assert ("goto", SELECTORS["video_publish_url"]) in ops
     assert ("set_input_files", SELECTORS["video_upload"], str(Path("pkg/video.mp4"))) in ops
     assert ("fill", SELECTORS["video_title_input"], "突发山火：救援连夜扑救") in ops
-    assert ("click", SELECTORS["video_cover"]) in ops
     assert ("click", SELECTORS["video_draft_btn"]) in ops  # 半自动末步存草稿（D20）
+
+
+def test_video_cover_flow_opens_dialog_and_feeds_hidden_input():
+    """D16 P1 校准：视频封面走弹层流程——触发器→本地上传→直塞隐藏 image input→确定。"""
+    page = FakePage(logged_in=True)
+    make_adapter(page).publish(video_package(), make_account())
+
+    ops = page.calls
+    # 触发器与本地上传 tab 均点击
+    assert ("click", SELECTORS["video_cover_trigger"]) in ops
+    assert ("click", SELECTORS["video_cover_local_tab"]) in ops
+    # 隐藏 image file input 直塞封面（不点拖拽卡）
+    assert (
+        "set_input_files",
+        SELECTORS["video_cover_input"],
+        str(Path("pkg/cover.jpg")),
+    ) in ops
+    # 编辑态完成信号 = 等「确定」出现，再点「确定」
+    assert ("wait_for_selector", SELECTORS["video_cover_confirm_btn"]) in ops
+    assert ("click", SELECTORS["video_cover_confirm_btn"]) in ops
+    # FakePage.query_selector 默认 None → 无裁剪按钮、无二次确认分支被触发
+    assert ("query_selector", SELECTORS["video_cover_crop_btn"]) in ops
+    assert ("query_selector", SELECTORS["video_cover_second_confirm"]) in ops
+
+
+def test_video_cover_flow_clicks_crop_and_second_confirm_when_present():
+    """非 16:9 封面：裁剪按钮与二次确认存在时应各自点击。"""
+
+    class RichPage(FakePage):
+        def query_selector(self, selector: str):
+            self.calls.append(("query_selector", selector))
+            if selector in (
+                SELECTORS["video_cover_crop_btn"],
+                SELECTORS["video_cover_second_confirm"],
+            ):
+                return ClickableFake(self.calls)
+            return None
+
+    page = RichPage(logged_in=True)
+    make_adapter(page).publish(video_package(), make_account())
+
+    # 裁剪按钮与二次确认经 query_selector 命中后，各自 .click()（记录为 element click）
+    element_clicks = [c for c in page.calls if c == ("click", "element")]
+    assert len(element_clicks) == 2
+    queried = [c[1] for c in page.calls if c[0] == "query_selector"]
+    assert SELECTORS["video_cover_crop_btn"] in queried
+    assert SELECTORS["video_cover_second_confirm"] in queried
+    # 一级「确定」仍走 page.click(selector)，只点一次
+    clicked = [c[1] for c in page.calls if c[0] == "click"]
+    assert clicked.count(SELECTORS["video_cover_confirm_btn"]) == 1
 
 
 def test_video_auto_publish_clicks_video_publish():

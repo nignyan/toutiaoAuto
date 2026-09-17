@@ -43,8 +43,22 @@ SELECTORS = {
     "video_title_input": "input[placeholder*='请输入']",
     # 真机确认正文为 ProseMirror 编辑器；.ProseMirror 比 div[contenteditable='true'] 更精确。
     "body_editor": ".ProseMirror",
-    # D16 实测：视频封面组件（无独立 file input，内部 file input 待 P1 校准）。
-    "video_cover": ".xigua-poster-editor",
+    # D16 P1 真机校准（2026-09-17，探针 v1-v7，.scratch/selector-calibration/）：
+    # 封面组件 .xigua-poster-editor 无可见 file input；点 fake-upload-trigger 弹
+    # 「封面截取」弹层，切「本地上传」tab 后拖拽卡内出现隐藏 image file input
+    # （accept=image/*，display:none，可 set_input_files 直塞、无需点卡触发原生框）。
+    # 喂图后 16:9 直接进「封面编辑」态、非 16:9 先「完成裁剪」；点「确定」弹二次
+    # 确认「完成后无法继续编辑」，再点「确定」弹层关闭、封面入库表单。
+    # 前置：封面分辨率建议 ≥1920*1080（618x1000 小图喂入后编辑态不渲染）。
+    "video_cover_trigger": ".xigua-poster-editor .fake-upload-trigger",
+    "video_cover_dialog": ".m-poster-upgrade",
+    "video_cover_local_tab": ".m-poster-upgrade :text('本地上传')",
+    "video_cover_input": ".xigua-upload-poster-trigger input[type=file]",
+    "video_cover_crop_btn": ".m-poster-upgrade button:has-text('完成裁剪')",
+    "video_cover_confirm_btn": ".m-poster-upgrade button.btn-sure",
+    "video_cover_second_confirm": (
+        ".Dialog-container:has-text('完成后无法继续编辑') button.btn-sure"
+    ),
     "tag_input": "input[placeholder*='标签']",  # 候选全 MISS 未校准；MVP 无标签来源（tags=[]）
     # 真机消歧：图文页同时存在「定时发布」「预览并发布」，原 button:has-text('发布') 会命中两处。
     "publish_btn": "button:has-text('预览并发布')",  # 图文发布
@@ -184,10 +198,33 @@ class ToutiaoDraftAdapter:
 
         if package.cover_path:
             if is_video:
-                # 视频封面走 .xigua-poster-editor 组件（内部 file input 待 P1 校准）。
-                page.click(SELECTORS["video_cover"], timeout=self.timeout_ms)
+                # 视频封面走弹层流程（D16 P1 校准）：触发器→本地上传→隐藏 input→确定→二次确定。
+                self._set_video_cover(page, str(package.cover_path))
             else:
                 page.set_input_files(SELECTORS["video_upload"], str(package.cover_path))
+
+    def _set_video_cover(self, page: Any, cover_path: str) -> None:
+        """视频封面入库（2026-09-17 真机校准，探针 v1-v7）：
+        点封面触发器 → 弹层切「本地上传」→ 直塞拖拽卡内隐藏 image file input
+        （无需点卡触发原生文件框）→ 非 16:9 先「完成裁剪」→「确定」→ 二次确认「确定」。
+        封面入库后不可再编辑（平台语义），故失败直接抛出由上层记 failed。"""
+        page.click(SELECTORS["video_cover_trigger"], timeout=self.timeout_ms)
+        page.wait_for_selector(SELECTORS["video_cover_dialog"], timeout=self.timeout_ms)
+        page.click(SELECTORS["video_cover_local_tab"], timeout=self.timeout_ms)
+        page.wait_for_selector(SELECTORS["video_cover_input"], timeout=self.timeout_ms)
+        page.set_input_files(SELECTORS["video_cover_input"], cover_path)
+        # 编辑态渲染完成的信号是「确定」按钮出现（裁剪态与非裁剪态都有它）。
+        page.wait_for_selector(SELECTORS["video_cover_confirm_btn"], timeout=self.timeout_ms)
+        crop = page.query_selector(SELECTORS["video_cover_crop_btn"])
+        if crop is not None:  # 非 16:9 封面先完成裁剪
+            crop.click()
+            page.wait_for_timeout(2_000)
+        page.click(SELECTORS["video_cover_confirm_btn"], timeout=self.timeout_ms)
+        page.wait_for_timeout(2_000)
+        second = page.query_selector(SELECTORS["video_cover_second_confirm"])
+        if second is not None:  # 「完成后无法继续编辑，是否确定完成？」二次确认
+            second.click()
+        page.wait_for_timeout(3_000)
 
     # ---- 查询已发布列表 ----
     def list_published_titles(self, account: Account) -> list[str]:
