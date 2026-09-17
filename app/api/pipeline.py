@@ -56,7 +56,12 @@ from app.pipeline.dispatcher import (
     unskip_item,
 )
 from app.pipeline.format_decision import decide_format
-from app.pipeline.producer import ProducerError, produce_all, produce_for_event
+from app.pipeline.producer import (
+    ProducerError,
+    produce_all,
+    produce_for_event,
+    reproduce_for_production,
+)
 from app.pipeline.reflux import (
     AnalysisReport,
     RefluxError,
@@ -356,6 +361,23 @@ def list_productions(
 ) -> list[Production]:
     """成品列表（留档捞回入口），可按质检状态过滤。"""
     return ProductionDao(db).list(status=status, limit=limit)
+
+
+@router.post("/productions/{production_id}/reproduce", response_model=Production)
+def reproduce_production(
+    production_id: str,
+    db: DB = Depends(get_db),
+    composer: ContentComposer = Depends(get_composer),
+) -> Production:
+    """重生成品：事件当前素材实时复跑并原地覆盖。
+
+    404 成品不存在；409 草稿已存/已发布或形态判定 DEFER。
+    """
+    try:
+        return reproduce_for_production(db, production_id, composer)
+    except ProducerError as exc:
+        code = 404 if exc.kind == "not_found" else 409
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
 
 # ---- 账号矩阵（规格 D10 §6）----

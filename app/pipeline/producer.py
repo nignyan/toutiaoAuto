@@ -6,10 +6,17 @@
 
 from dataclasses import dataclass, field
 
-from app.daos import DB, EventDao, MediaAssetDao, ProductionDao
-from app.models import EventStatus, Production, ProductionType
+from app.daos import DB, EventDao, MediaAssetDao, ProductionDao, PublishQueueDao
+from app.models import (
+    Event,
+    EventStatus,
+    MediaAsset,
+    Production,
+    ProductionType,
+    PublishStatus,
+)
 from app.pipeline.composer import ContentComposer, TemplateComposer, resolve_rule
-from app.pipeline.format_decision import ContentFormat, decide_format
+from app.pipeline.format_decision import ContentFormat, FormatDecision, decide_format
 from app.pipeline.quality_check import check_quality
 
 _FORMAT_TO_TYPE = {
@@ -43,6 +50,39 @@ class ProduceAllReport:
     skipped: list[SkippedEntry] = field(default_factory=list)
 
 
+def _compose_content(
+    ev: Event,
+    usable: list[MediaAsset],
+    decision: FormatDecision,
+    composer: ContentComposer,
+) -> dict:
+    """生产核心复用：compose + 质检 + 素材一致性防御，返回成品内容字段。"""
+    draft = composer.compose(ev, usable, decision)
+    quality = check_quality(ev, usable)
+
+    # 防御性一致性：Draft 素材 id必须全部存在于编排骨箱（usable 子集）
+    known = {a.id for a in usable}
+    unknown = [i for i in draft.ordered_asset_ids if i not in known]
+    if unknown or (draft.cover_asset_id and draft.cover_asset_id not in known):
+        raise ValueError(
+            f"composer 产出的素材 id 超出编排骨箱：{unknown or draft.cover_asset_id}"
+        )
+
+    return {
+        "production_type": _FORMAT_TO_TYPE[decision.content_format],
+        "asset_ids": draft.ordered_asset_ids,
+        "title": draft.title,
+        "body": draft.body,
+        "cover_asset_id": draft.cover_asset_id,
+        "rule": resolve_rule(decision, usable),
+        "composer": getattr(composer, "name", "template"),
+        "checks": quality.checks,
+        "vetoes": quality.vetoes,
+        "quality_score": quality.score,
+        "quality_status": quality.status,
+    }
+
+
 def produce_for_event(
     db: DB, event_id: str, composer: ContentComposer | None = None
 ) -> Production:
@@ -65,37 +105,61 @@ def produce_for_event(
             "not_ready", f"事件 {event_id} 形态判定为 DEFER，与 READY 状态矛盾"
         )
 
-    draft = composer.compose(ev, usable, decision)
-    quality = check_quality(ev, usable)
-
-    # 防御性一致性：Draft 素材 id必须全部存在于编排骨箱（usable 子集）
-    known = {a.id for a in usable}
-    unknown = [i for i in draft.ordered_asset_ids if i not in known]
-    if unknown or (draft.cover_asset_id and draft.cover_asset_id not in known):
-        raise ValueError(
-            f"composer 产出的素材 id 超出编排骨箱：{unknown or draft.cover_asset_id}"
-        )
-
-    prod = Production(
-        event_id=ev.id,
-        production_type=_FORMAT_TO_TYPE[decision.content_format],
-        asset_ids=draft.ordered_asset_ids,
-        title=draft.title,
-        body=draft.body,
-        cover_asset_id=draft.cover_asset_id,
-        rule=resolve_rule(decision, usable),
-        composer=getattr(composer, "name", "template"),
-        checks=quality.checks,
-        vetoes=quality.vetoes,
-        quality_score=quality.score,
-        quality_status=quality.status,
-    )
+    prod = Production(event_id=ev.id, **_compose_content(ev, usable, decision, composer))
 
     with db.transaction() as conn:  # 成品落库与事件状态跨表原子
         ProductionDao(db).insert_with(conn, prod)
         ev.status = EventStatus.PRODUCED
         event_dao.upsert_with(conn, ev)
     return prod
+
+
+def reproduce_for_production(
+    db: DB, production_id: str, composer: ContentComposer | None = None
+) -> Production:
+    """重生产（ROADMAP 第一档）：取事件当前素材实时复跑，结果原地覆盖同一成品行。
+
+    守卫：成品不存在 → not_found；草稿已存/已发布 → queue_state；
+    形态判定 DEFER → not_ready。事件全程保持 PRODUCED，队列 1:1 不变。
+    """
+    composer = composer if composer is not None else TemplateComposer()
+    prod_dao = ProductionDao(db)
+    prod = prod_dao.get(production_id)
+    if prod is None:
+        raise ProducerError("not_found", f"成品 {production_id} 不存在")
+
+    queue_item = PublishQueueDao(db).get_by_production(production_id)
+    if queue_item is not None and queue_item.status in (
+        PublishStatus.DRAFT_READY,
+        PublishStatus.PUBLISHED,
+    ):
+        raise ProducerError(
+            "queue_state", f"成品 {production_id} 已存草稿或已发布，不可重产"
+        )
+
+    ev = EventDao(db).get(prod.event_id)
+    if ev is None:
+        raise ProducerError("not_found", f"事件 {prod.event_id} 不存在")
+
+    assets = MediaAssetDao(db).list_by_event(prod.event_id)
+    usable = [a for a in assets if a.is_usable]
+    decision = decide_format(assets)  # 实时复跑，不读历史判定
+    if decision.content_format == ContentFormat.DEFER:
+        raise ProducerError(
+            "not_ready", f"事件 {prod.event_id} 形态判定为 DEFER，不可重产"
+        )
+
+    updated = Production(
+        id=prod.id,
+        event_id=prod.event_id,
+        vertical=prod.vertical,
+        account_id=prod.account_id,
+        created_at=prod.created_at,
+        **_compose_content(ev, usable, decision, composer),
+    )
+
+    prod_dao.update_content(production_id, updated)  # 单表覆盖，无需跨表事务
+    return updated
 
 
 def produce_all(

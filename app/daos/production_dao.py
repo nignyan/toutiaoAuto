@@ -77,6 +77,30 @@ class ProductionDao:
             "UPDATE production SET account_id = ? WHERE id = ?", (account_id, production_id)
         )
 
+    def update_content(self, production_id: str, prod: Production) -> None:
+        """原地覆盖成品内容字段（重产用），不动 id/event_id/vertical/account_id/created_at。"""
+        self._db.run(
+            "UPDATE production SET"
+            " production_type = ?, asset_ids_json = ?, title = ?, body = ?,"
+            " cover_asset_id = ?, rule = ?, composer = ?, quality_score = ?,"
+            " quality_status = ?, checks_json = ?, vetoes_json = ?"
+            " WHERE id = ?",
+            (
+                prod.production_type.value,
+                json.dumps(prod.asset_ids, ensure_ascii=False),
+                prod.title,
+                prod.body,
+                prod.cover_asset_id,
+                prod.rule,
+                prod.composer,
+                prod.quality_score,
+                prod.quality_status.value,
+                json.dumps(prod.checks, ensure_ascii=False),
+                json.dumps(prod.vetoes, ensure_ascii=False),
+                production_id,
+            ),
+        )
+
     def update_title(self, production_id: str, title: str) -> None:
         """行内改标题（发布工作台 PATCH 入口，单表原子写）。"""
         self._db.run("UPDATE production SET title = ? WHERE id = ?", (title, production_id))
