@@ -20,10 +20,10 @@
 - [x] 发布执行（后端：dispatcher + 6 端点，队列 draft_ready 状态机 + sort_key，2026-09-16）
 - [x] 头条后台选择器实测校准 + 存草稿 CDP 路线（图文链路，2026-09-16；视频链路仍占位）
 - [x] 数据回流（§4.7，MVP 仅建议动作：reflux 模型/DAO/编排 + 8 端点，2026-09-16）
-- [ ] 头条视频链路选择器真机校准（出 MVP 关键路径）
+- [ ] 头条视频链路发布口径待产品确认（真机已校准：视频页无存草稿、仅标题+封面；口径确认 + 素材本地化后接线，2026-09-17）
 
 ## 主要阻塞
-- 无（数据回流的表现数据依赖运营在真实发布后人工回填）。
+- 视频链路发布口径待产品确认（真机已确认为「无草稿、仅标题+封面」，MVP 维持出界，见 DECISIONS D16）；其余无阻塞（数据回流表现数据由运营人工回填）。
 
 ## 最近闭环摘要
 - 数据回流闭环（D15）：`reflux_records`（production_id 唯一，upsert 覆盖取最新，created_at/首次回填保留）+ `reflux_suggestions`（pending/confirmed/rejected；确认→采纳留痕、驳回终态、**回滚回到待确认可再采纳**——拍板口径）；`publish_queue` 新增 `published_at`（confirm/auto_publish 成功时落库，存量库补列迁移）。分析纯函数 `build_report` 四维聚合 + `generate_suggestions` 确定性规则（组样本 ≥2、互动率相对差 ≥30% 且绝对差 ≥1pp、每维度至多 1 条、垂类排除通用且需 ≥2 个非通用垂类）。API 新增 8 端点：`POST/GET /reflux/records`（回填守卫：仅 published 可回填）、`POST /reflux/analyze`（重建 pending 保留已决策）、`GET /reflux/analysis`（只读）、`GET /reflux/suggestions` + confirm/reject/rollback。

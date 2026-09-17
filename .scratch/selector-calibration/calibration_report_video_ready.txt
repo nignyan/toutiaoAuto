@@ -1,0 +1,64 @@
+== 当前标签页 URL: https://mp.toutiao.com/profile_v4/xigua/upload-video ==
+== 等待上传完成 ==
+  [t=3s] '头条号 消息 18 发布视频 发布视频创建合集 竖版视频（宽<高的视频，如9:16）不享受收益分成，不支持参与活动，无原创、赞赏、定时等功能 test_video.mp4 添加视频 上传成功 test_video.mp4 视频时长: 3s 重新上传 删除 发布设置 标题 5/30 封面 上传封面 清晰美观的封面有利于推'
+== 上传完成判定: True ==
+-- input（11 处）--
+  [0] tag=input type='file' placeholder='' accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg,.3gp,.m4v,.dvix,.dv,.mkv,.vob,.qt,.cpk,.fli,.flc,.mod,.ts,.webm,.m2ts,video/*' href='' class='' text=''
+  [1] tag=input type='file' placeholder='' accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg,.3gp,.m4v,.dvix,.dv,.mkv,.vob,.qt,.cpk,.fli,.flc,.mod,.ts,.webm,.m2ts,video/*' href='' class='' text=''
+  [2] tag=input type='' placeholder='请输入 0～30 个字符' accept='' href='' class='xigua-input show-limit byte-input byte-input-size-large' text=''
+  [3] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [4] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [5] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [6] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [7] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [8] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [9] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+  [10] tag=input type='checkbox' placeholder='' accept='' href='' class='' text=''
+-- textarea（0 处）--
+-- contenteditable（0 处）--
+-- button（2 处）--
+  [0] tag=button type='button' placeholder='' accept='' href='' class='byte-btn byte-btn-primary byte-btn-size-huge byte-btn-shape-square' text='添加视频'
+  [1] tag=button type='button' placeholder='' accept='' href='' class='byte-btn byte-btn-primary byte-btn-size-large byte-btn-shape-square action-footer-btn subm' text='发布'
+-- a[链接含草稿/保存/发布]（4 处）--
+  （无可草稿/保存/发布相关链接）
+
+== 候选选择器 HIT/MISS 探测 ==
+-- title（标题框） --
+  HIT  input[placeholder*='请输入'] （命中 1 处；首元素 tag=input placeholder='请输入 0～30 个字符' class='xigua-input show-limit byte-input byte-input-size-large' text=''）
+  MISS input[placeholder*='标题'] 
+  HIT  [class*='xigua-input'] （命中 2 处；首元素 tag=div placeholder='' class='xigua-input-wrapper' text='5/30'）
+-- desc（简介/描述/正文） --
+  MISS input[placeholder*='简介'] 
+  MISS input[placeholder*='描述'] 
+  MISS input[placeholder*='正文'] 
+  MISS input[placeholder*='补充'] 
+  MISS textarea 
+  MISS div[contenteditable='true'] 
+  MISS [class*='intro'] 
+  MISS [class*='desc'] 
+  MISS [class*='summary'] 
+-- cover（封面/海报） --
+  HIT  [class*='poster'] （命中 2 处；首元素 tag=div placeholder='' class='video-form-item form-item-poster' text='封面 上传封面 清晰美观的封面有利于推荐，建议分辨率不低于 618*1000（大小不超过 20M）'）
+  HIT  [class*='xigua-poster'] （命中 1 处；首元素 tag=div placeholder='' class='xigua-poster-editor portrait' text='上传封面'）
+  HIT  [class*='cover'] （命中 1 处；首元素 tag=div placeholder='' class='cover empty' text=''）
+  MISS input[type=file][accept*='image'] 
+-- video_input（视频上传 file） --
+  HIT  input[type=file][accept*='video'] （命中 2 处；首元素 tag=input placeholder='' class='' text=''）
+  HIT  input[type=file] （命中 2 处；首元素 tag=input placeholder='' class='' text=''）
+-- tag（标签/话题） --
+  MISS input[placeholder*='标签'] 
+  MISS input[placeholder*='话题'] 
+  MISS [class*='tag'] input 
+  MISS [class*='topic'] input 
+-- save_draft（存草稿） --
+  MISS button:has-text('存草稿') 
+  MISS button:has-text('草稿') 
+  MISS button:has-text('保存') 
+  MISS a:has-text('存草稿') 
+  MISS a:has-text('草稿') 
+  MISS text=存草稿 
+  MISS [class*='draft'] 
+-- publish（发布/投稿） --
+  HIT  button:has-text('发布') （命中 1 处；首元素 tag=button placeholder='' class='byte-btn byte-btn-primary byte-btn-size-large byte-btn-shape-square action-footer-btn subm' text='发布'）
+  MISS button:has-text('投稿') 
+  MISS button:has-text('上传') 

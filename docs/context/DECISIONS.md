@@ -97,7 +97,7 @@
 - CDP 语义：优先复用已打开的头条标签页，退出仅关闭本进程新建的标签页；`browser.close()` 仅断开 CDP 连接、不杀用户浏览器进程；进入页面统一 `goto` 头条首页（未登录 302 到 /auth/** 作登录检测信号）。
 - 配置接线：构造器 `cdp_endpoint`；CLI `--cdp-endpoint`（留空回读环境变量 `TOUTIAO_CDP_ENDPOINT`）；API 工厂 `get_adapter` 同样回读该环境变量；两种测试注入（`browser_factory`/`cdp_browser_factory`）互不影响。
 - 图文选择器 5 键已真机校准（登录入口按钮 / 图文发布页 URL / 标题 textarea / 正文 .ProseMirror / 「预览并发布」消歧），集中在 `SELECTORS`；视频链路、tag、存草稿按钮仍为占位（MVP 出界）。
-- 遗留清理：探针草稿（校准探测 v4/v4c/v4d/v5 等）需人工在头条草稿箱删除；探针脚本 `scripts/calibrate_*.py` 为一次性工具，用后可删。
+- 遗留清理：探针草稿（校准探测 v4/v4c/v4d/v5 等）需人工在头条草稿箱删除；探针脚本统一归档在 `scripts/probes/`（一次性工具，验收后可整目录删除，清单见 `scripts/probes/README.md`）。
 
 ## D15 数据回流口径（2026-09-16 用户拍板）
 - 范围：产品 §4.7（MVP 仅建议动作）+ §4.6「记录审核状态」（D13 移交）；规格见 `docs/specs/2026-09-16_数据回流_设计文档.md`。
@@ -109,3 +109,15 @@
 - analyze 语义：删除全部 pending 后重建（原子事务），confirmed/rejected 保留作决策历史；数据未变时重复 analyze 产生同文 pending 项属预期，MVP 不去重。
 - 出界：自动调参（D3，§7 演进项）、表现数据自动采集、多次快照、素材来源单列分析、LLM 文案。
 - 工程教训：记录 DAO 排序列曾误用 created_at，回填时间维度应显式分列排序（`recorded_at`）。
+
+## D16 视频链路真机校准与「无存草稿」口径（2026-09-17 用户拍板：维持出界）
+- 来源：CDP 真机校准（探针证据 `.scratch/selector-calibration/calibration_report_video*.txt`；账号「真机校准账号」已确认有视频发布权限）。
+- 视频页选择器已实测（阶段 2 结论，未改源码）：
+  - `video_publish_url` = `https://mp.toutiao.com/profile_v4/xigua/upload-video`（占位值确认正确）。
+  - `video_upload` = `input[type=file][accept*='video']`（上传前 1 处、上传后 2 处，有歧义）。
+  - 标题框 = `input[placeholder*='请输入']`（placeholder「请输入 0～30 个字符」，type 空，**非图文页 textarea**，需按形态区分选择器）。
+  - 封面 = `.xigua-poster-editor`（组件式，无独立 file input，点击触发）。
+  - 发布按钮 = `button:has-text('发布')`。
+  - 无正文/描述框、无标签框、**无「存草稿」按钮**。
+- 关键冲突：视频页是「上传 → 标题+封面 → 发布」两段式，**无草稿机制**，与 MVP「填草稿箱 + 人工点发布」语义冲突（当前适配器视频分支 `page.click(save_draft_btn)` 在视频页必超时）。
+- 拍板：维持视频链路 MVP 出界；选择器结论归档，待产品确认「直接发布 vs 草稿」口径后再接线。前置依赖：素材本地化 + 发布口径确认。

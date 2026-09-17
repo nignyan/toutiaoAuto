@@ -1,0 +1,61 @@
+== 视频上传页: https://mp.toutiao.com/profile_v4/xigua/upload-video ==
+== 上传测试视频: test_video.mp4 (4111 bytes) ==
+== 上传后轮询表单渲染 ==
+  [t=3s] textarea=0 text_input=0 file=2 button=2 contenteditable=0 body='头条号 消息 18 发布视频 发布视频创建合集 竖版视频（宽<高的视频，如9:16）不享受收益分成，不支持参与活动，无原创、赞赏、定时等功能 test_video.mp4 添加视频 上传中… 0% 已上传: 0B/4.0KB 删除 发布设置'
+
+== 表单渲染=是 ==
+-- input（11 处）--
+  [0] tag=input type='file' placeholder='' accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg,.3gp,.m4v,.dvix,.dv,.mkv,.vob,.qt,.cpk,.fli,.flc,.mod,.ts,.webm,.m2ts,video/*' id='' name='' class='' text=''
+  [1] tag=input type='file' placeholder='' accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg,.3gp,.m4v,.dvix,.dv,.mkv,.vob,.qt,.cpk,.fli,.flc,.mod,.ts,.webm,.m2ts,video/*' id='' name='' class='' text=''
+  [2] tag=input type='' placeholder='请输入 0～30 个字符' accept='' id='' name='' class='xigua-input show-limit byte-input byte-input-size-large' text=''
+  [3] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [4] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [5] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [6] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [7] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [8] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [9] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+  [10] tag=input type='checkbox' placeholder='' accept='' id='' name='' class='' text=''
+-- textarea（0 处）--
+-- contenteditable（0 处）--
+-- button（2 处）--
+  [0] tag=button type='button' placeholder='' accept='' id='' name='' class='byte-btn byte-btn-primary byte-btn-size-huge byte-btn-shape-square' text='添加视频'
+  [1] tag=button type='button' placeholder='' accept='' id='' name='' class='byte-btn byte-btn-primary byte-btn-size-large byte-btn-shape-square action-footer-btn subm' text='发布'
+
+== 候选选择器 HIT/MISS 探测 ==
+-- title（标题框） --
+  MISS input[placeholder*='标题'] 
+  MISS textarea[placeholder*='标题'] 
+  HIT  input[placeholder*='请输入'] （命中 1 处；首元素 tag=input placeholder='请输入 0～30 个字符' accept='' class='xigua-input show-limit byte-input byte-input-size-large'）
+  MISS input[type=text] 
+  HIT  [class*='title'] input （命中 1 处；首元素 tag=input placeholder='请输入 0～30 个字符' accept='' class='xigua-input show-limit byte-input byte-input-size-large'）
+  MISS [class*='title'] textarea 
+-- desc（描述/正文） --
+  MISS textarea[placeholder*='描述'] 
+  MISS textarea[placeholder*='简介'] 
+  MISS textarea[placeholder*='补充'] 
+  MISS textarea[placeholder*='正文'] 
+  MISS div[contenteditable='true'] 
+  MISS .ProseMirror 
+  HIT  [class*='editor'] （命中 1 处；首元素 tag=div placeholder='' accept='' class='xigua-poster-editor portrait'）
+  MISS textarea 
+-- cover_input（封面上传 file） --
+  MISS input[type=file][accept*='image'] 
+  MISS input[type=file][accept*='jpg'] 
+  MISS input[type=file][accept*='png'] 
+-- video_input（视频上传 file） --
+  HIT  input[type=file][accept*='video'] （命中 2 处；首元素 tag=input placeholder='' accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg,.3gp,.m4v,.dvix,.dv,.mkv,.vob,.qt,.cpk,.fli,.flc,.mod,.ts,.webm,.m2ts,video/*' class=''）
+  HIT  input[type=file] （命中 2 处；首元素 tag=input placeholder='' accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg,.3gp,.m4v,.dvix,.dv,.mkv,.vob,.qt,.cpk,.fli,.flc,.mod,.ts,.webm,.m2ts,video/*' class=''）
+-- tag（标签/话题） --
+  MISS input[placeholder*='标签'] 
+  MISS input[placeholder*='话题'] 
+  MISS input[placeholder*='添加'] 
+-- save_draft（存草稿） --
+  MISS button:has-text('存草稿') 
+  MISS text=存草稿 
+  MISS button:has-text('草稿') 
+  MISS button:has-text('保存') 
+-- publish（发布/投稿） --
+  HIT  button:has-text('发布') （命中 1 处；首元素 tag=button placeholder='' accept='' class='byte-btn byte-btn-primary byte-btn-size-large byte-btn-shape-square action-footer-btn subm'）
+  MISS button:has-text('投稿') 
+  MISS button:has-text('上传') 
