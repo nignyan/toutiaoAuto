@@ -160,3 +160,4 @@
 - **轮询自动确认继续排除视频**：list/v2（status=2&type=0）对视频的覆盖未真机验证，视频确认暂以人工 confirm 为准，验证后放开。
 - 假阳性队列项 c449a0e9 改回 failed（publish_result 注明勘误），用同一条队列项重验。
 - 证据：`.scratch/video-publish-acceptance/report.md` D20 节；探针 `scripts/probes/probe_video_draft_btn.py` / `probe_video_action_buttons.py`。
+- **重验通过（2026-09-17）**：failed → publish → 视频存草稿 draft_ready → 用户后台目验/改标题/点发布 → confirm published → list/v2 交叉核验通过（列表新增「测试视频（可忽略）」）。**视频确认进入 list/v2**，但用户发布时改动了标题 → 按生产标题精确匹配的轮询对视频不可靠 → 维持人工 confirm 为主、轮询继续排除视频（有意识的取舍，非验证缺口）。

@@ -59,5 +59,9 @@ published_at: 2026-09-17T05:33:03.345394+00:00
 - 半自动视频改走草稿箱（D20 用户拍板），与图文同口径；publish-now 保留为系统内直达发布入口
 - 轮询自动确认继续排除视频（list/v2 视频覆盖未验证），视频确认走人工 confirm
 
-## 修正后重验
-- 待补：POST /publish-queue/c449a0e9/publish（半自动草稿路径）→ draft_ready → 用户草稿箱目验 + 后台点发布 → confirm → published。
+## 修正后重验（已通过，2026-09-17）
+- `POST /publish-queue/c449a0e9/publish`（半自动草稿路径，failed 可重派发）：本地化（缓存复用 data/media 文件）→ CDP 上传 → 等上传成功 → 填标题 → 点 `.video-batch-footer button:has-text('存草稿')` → **draft_ready「视频草稿已保存，等待人工发布」**。
+- 用户在头条后台草稿箱目验 → 改标题为「测试视频（可忽略）」→ 后台点发布 → 报告发布成功。
+- `POST /publish-queue/c449a0e9/confirm` → published，published_at=2026-09-17T06:14:28Z，publish_result=「人工确认已发布」。
+- list/v2 交叉核验：已发布列表 6→7 条，新增「测试视频（可忽略）」——**视频确认进入 list/v2**。
+- 附带发现：用户后台发布时改动了标题 → 按生产标题精确匹配的轮询自动确认对视频不可靠 → **维持人工 confirm 为主，轮询继续排除视频**（记录于 D20，不做代码放开）。
