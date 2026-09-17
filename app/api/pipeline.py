@@ -466,8 +466,9 @@ def publish_queue_item(
     adapter: PublishAdapter = Depends(get_adapter),
     local_media: LocalMedia | None = Depends(get_local_media),
 ) -> PublishQueueItem:
-    """派发单条队列项到发布适配器（RPA 填稿/自动发布），结果落库。
+    """派发单条队列项到发布适配器（RPA 填稿/存草稿），结果落库。
 
+    图文与视频半自动同口径：存草稿 → draft_ready → 人工在头条后台点发布。
     200 派发完成（draft_ready/published/failed 均属完成）；
     404 队列项不存在；409 状态守卫（仅 pending/failed 可派发）。
     """
@@ -484,7 +485,7 @@ def publish_queue_item_now(
     adapter: PublishAdapter = Depends(get_adapter),
     local_media: LocalMedia | None = Depends(get_local_media),
 ) -> PublishQueueItem:
-    """本系统触发视频发布（半自动的人工确认动作，内部强制点发布）。
+    """系统内直达发布（保留入口，内部强制点发布）。
 
     404 不存在；409 非 pending 或非视频形态。
     """

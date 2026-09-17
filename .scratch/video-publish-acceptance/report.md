@@ -1,6 +1,9 @@
 # 视频真实发布实机验收报告（D19，2026-09-17）
 
-## 结论
+> **⚠️ D20 勘误（2026-09-17）**：本报告「一次通过」结论已被撤销——验收实际误点了
+> 「定时发布」按钮（见下方勘误节），视频未发布。真实结论以 D20 为准。
+
+## 结论（已撤销）
 `POST /publish-queue/{id}/publish-now` 全链路**一次通过**：素材本地化 → CDP 接管真实 Chrome → 视频上传 → 填标题 → 点发布 → 队列 `published`。
 
 ## 现场事实
@@ -32,3 +35,29 @@ published_at: 2026-09-17T05:33:03.345394+00:00
 ## 遗留
 - 封面 `.xigua-poster-editor` 内部 file input 校准（D16 P1）：本次成品无图片素材跳过封面步骤，主链路不受影响，仍待真机校准。
 - 头条平台侧：测试视频公开可见，验收后需人工删除。
+
+---
+
+# D20 勘误（2026-09-17，用户目验触发）
+
+## 触发
+用户目验 RPA 打开的视频发布编辑页，指出页面明确有「存草稿」按钮——与 D16「视频页无存草稿按钮」记录冲突。
+
+## 探针取证（probe_video_draft_btn.py / probe_video_action_buttons.py）
+- 上传阶段（无视频）：无任何动作按钮，仅有「发布视频」页签——D16 探针在此阶段取证，故漏检。
+- 编辑阶段（上传完成后）footer 三按钮，均为 `BUTTON > SPAN`，容器 `div.video-batch-footer > div.button-group`：
+  - 存草稿：`BUTTON.byte-btn byte-btn-default ...`
+  - 定时发布：`BUTTON.byte-btn byte-btn-default ...`
+  - 发布：`BUTTON.byte-btn byte-btn-primary ...`（唯一主样式）
+
+## D19 假阳性根因
+`video_publish_btn = button:has-text('发布')` 子串匹配命中「定时发布」（DOM 序在「发布」之前）→ 误点定时发布 → 弹定时面板，视频未发布；适配器点击后即返回，队列被误标 published。**list/v2 已发布列表核验：无该测试标题（仅 6 条旧内容）**，假阳性坐实。
+
+## 处置
+- 队列项 c449a0e9：published → failed（publish_result 注明勘误，published_at 清空）
+- SELECTORS：`video_publish_btn` 改 `.video-batch-footer button.byte-btn-primary`；新增 `video_draft_btn = .video-batch-footer button:has-text('存草稿')`
+- 半自动视频改走草稿箱（D20 用户拍板），与图文同口径；publish-now 保留为系统内直达发布入口
+- 轮询自动确认继续排除视频（list/v2 视频覆盖未验证），视频确认走人工 confirm
+
+## 修正后重验
+- 待补：POST /publish-queue/c449a0e9/publish（半自动草稿路径）→ draft_ready → 用户草稿箱目验 + 后台点发布 → confirm → published。

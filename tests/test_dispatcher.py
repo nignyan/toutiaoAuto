@@ -309,21 +309,26 @@ def test_confirm_rejects_non_draft_ready(db) -> None:
     assert ei.value.kind == "bad_status"
 
 
-# ---- 视频链路（dispatch_item 拦截 + dispatch_item_now）----
+# ---- 视频链路（半自动草稿箱 + dispatch_item_now 直达发布）----
 
 def _video_production(db, **kw) -> Production:
     return _production(db, production_type=ProductionType.VIDEO, **kw)
 
 
-def test_dispatch_video_semi_auto_rejected(db) -> None:
+def test_dispatch_video_semi_auto_drafts(db) -> None:
+    """D20 勘误：视频有草稿能力，半自动派发走草稿箱（draft_ready），不再 409 拦截。"""
     _account(db)  # auto_publish=False
     _video_production(db)
     item = _enqueue(db)
+    adapter = FakeAdapter(
+        PublishResult(status=AdapterStatus.DRAFT_READY, message="视频草稿已保存")
+    )
 
-    with pytest.raises(DispatchError) as ei:
-        dispatch_item(db, item.id, FakeAdapter())
-    assert ei.value.kind == "bad_status"
-    assert "publish-now" in str(ei.value)
+    out = dispatch_item(db, item.id, adapter, LocalMedia(video_path=Path("v.mp4")))
+
+    assert out.status == PublishStatus.DRAFT_READY
+    _, got_acc = adapter.calls[0]
+    assert got_acc.auto_publish is False  # 不强制点发布
 
 
 def test_dispatch_video_auto_publish_ok(db) -> None:

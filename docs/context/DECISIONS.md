@@ -144,9 +144,19 @@
 - 下载：httpx（collector 已有依赖，零新增），timeout 60s，follow_redirects；fetch 可注入测试。
 - 出界（不在本迭代）：视频页封面 `.xigua-poster-editor` 内部 file input 校准（D16 遗留 P1，本地化已产出 cover_path，等校准后接线真实上传）；素材自动清理；图片素材下载（图文分支不填图）。
 
-## D19 视频真实发布实机验收通过（2026-09-17）
+## D19 视频真实发布实机验收（2026-09-17）——结论已被 D20 勘误撤销，仅存档
 - 验收结论：`/publish-queue/{id}/publish-now` 全链路真机**一次通过**——素材本地化（1MB 样例片落盘 `data/media/`，字节数与源一致）→ CDP 接管真实 Chrome（复用已有 mp 标签页）→ 视频上传（「上传成功」信号命中）→ 填标题 → 点发布 → 队列 `published` + published_at 落库。D16 视频选择器 5 键（video_publish_url/video_upload/video_upload_done/video_title_input/video_publish_btn）真机实战全部命中。
 - 造数口径：collect 新建事件 + 只灌一条真实 URL 视频素材（cleared/B/清晰/密度 80/有署名）→ 规则 1 → VIDEO，QUALIFIED 80 分；标题 PATCH 为「系统联调测试视频（可忽略）」避免公开误导。
 - 工程教训（复用价值）：`TemplateComposer._order_assets` 视频按**入库原序**排前——含空 `source_url` 种子素材的旧事件不能直接复用（本地化 no_url 必败）；造数须保证「第一条视频素材即真实可下载」。另：READY 事件如含 attribution 为空的可用图片素材，参与生产即触发「署名缺失」一票否决。
 - 证据：`.scratch/video-publish-acceptance/report.md`；登录态探针收编 `scripts/probes/probe_cdp_login_state.py`。
 - 遗留：封面 file input 校准（D16 P1，本次无图片素材跳过封面步骤）仍待真机；测试视频需平台侧人工删除。
+
+## D20 视频草稿勘误 + 半自动流程改向（2026-09-17 用户目验拍板）
+- **撤销 D19「一次通过」结论**：验收实际误点了「定时发布」——`video_publish_btn = button:has-text('发布')` 子串匹配，且「定时发布」DOM 序在「发布」之前；点击后适配器立即返回，队列被误标 published。list/v2 已发布列表核验无该测试标题，假阳性坐实。
+- **修正 D16 记录**：视频编辑页（上传完成后）footer 有三按钮「存草稿/定时发布/发布」，容器 `div.video-batch-footer > div.button-group`；D16 探针在上传阶段取证（此时按钮未渲染）故漏检。用户目验触发，探针重取证坐实。
+- **选择器消歧**：`video_publish_btn` = `.video-batch-footer button.byte-btn-primary`（发布是唯一主样式按钮）；新增 `video_draft_btn` = `.video-batch-footer button:has-text('存草稿')`。教训：动作按钮消歧优先用样式类/精确文本/容器作用域，不用裸 `has-text` 子串匹配。
+- **半自动视频改走草稿箱**（用户拍板，取代 D17 中「视频半自动=publish-now」口径——其前提「视频无草稿」被证伪）：dispatch → RPA 点存草稿 → draft_ready → 人工在头条后台点发布 → 人工 confirm。图文视频口径统一，避免一键公开。
+- **publish-now 保留**为系统内直达发布入口（dispatch_item_now 语义不变，仅 pending + 视频形态）；dispatch_item 移除视频半自动 409 拦截。
+- **轮询自动确认继续排除视频**：list/v2（status=2&type=0）对视频的覆盖未真机验证，视频确认暂以人工 confirm 为准，验证后放开。
+- 假阳性队列项 c449a0e9 改回 failed（publish_result 注明勘误），用同一条队列项重验。
+- 证据：`.scratch/video-publish-acceptance/report.md` D20 节；探针 `scripts/probes/probe_video_draft_btn.py` / `probe_video_action_buttons.py`。

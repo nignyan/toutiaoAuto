@@ -18,9 +18,9 @@
   3. `POST /pipeline/produce` body `{"event_id": "..."}`（单事件生产；`/pipeline/produce/all` 批量）
   4. `POST /accounts` body `{"name": "主域账号", "daily_quota": 5}`（配置账号；暂停/恢复走 `PATCH /accounts/{id}`；仅实验域可 `DELETE`）
   5. `POST /pipeline/enqueue` body `{"production_id": "..."}`（QUALIFIED 成品分配入队；`/pipeline/enqueue/all` 批量，质量分降序）
-  6. `POST /publish-queue/{item_id}/publish`（派发到 RPA 适配器填草稿箱；pending/failed 可派发，结果落库 draft_ready/published/failed）
-  7. `POST /publish-queue/{item_id}/confirm`（头条后台人工点发布后回系统确认 → published）；`/skip`+`/unskip` 跳过可撤销；`PATCH /publish-queue/{item_id}` 改标题/调 sort_key 排序
-  7b. `POST /publish-queue/{item_id}/publish-now`（视频半自动：本系统内审核后直接触发真实发布；内部强制点发布；D19 已真机验收）。造数注意：视频素材必须是 asset_ids 首位的 usable 项（`_order_assets` 视频按入库原序排前，空 source_url 素材会导致本地化 no_url 失败）
+  6. `POST /publish-queue/{item_id}/publish`（派发到 RPA 适配器：图文存草稿箱、视频点「存草稿」（D20），结果落库 draft_ready；pending/failed 可派发）
+  7. `POST /publish-queue/{item_id}/confirm`（头条后台人工点发布后回系统确认 → published；视频确认目前仅走人工 confirm，轮询排除视频）；`/skip`+`/unskip` 跳过可撤销；`PATCH /publish-queue/{item_id}` 改标题/调 sort_key 排序
+  7b. `POST /publish-queue/{item_id}/publish-now`（系统内直达发布保留入口：内部强制点发布，仅视频形态；D20 起半自动审核走第 6 步草稿链路）。造数注意：视频素材必须是 asset_ids 首位的 usable 项（`_order_assets` 视频按入库原序排前，空 source_url 素材会导致本地化 no_url 失败）
   8. `POST /pipeline/wait-queue/timeout`（素材等待队列超时归档：DEFERRED 超 24h 未凑齐素材 → ARCHIVED；幂等可重复调用）
   9. `GET /publish-queue?account_id=...`（待发布队列，sort_key 升序默认 FIFO；`GET /productions?status=qualified` 成品捞回）
   10. `POST /reflux/records` body `{"production_id": "...", "exposure": 1000, "plays": 500, "completion_rate": 45.0, "interactions": 80, "negative": 2, "review_status": "approved"}`（表现数据人工回填，upsert 取最新；仅 published 成品可回填，409 未发布/404 不存在）

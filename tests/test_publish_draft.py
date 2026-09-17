@@ -122,13 +122,15 @@ def test_package_title_required():
 
 # ---- 适配器行为 ----
 
-def test_video_semi_auto_returns_failed_without_clicking_publish():
+def test_video_semi_auto_saves_draft_without_clicking_publish():
+    """D20 勘误：视频编辑页有「存草稿」按钮，半自动走草稿箱与图文同口径。"""
     page = FakePage(logged_in=True)
     result = make_adapter(page).publish(video_package(), make_account())
 
-    assert result.status == PublishStatus.FAILED
-    assert "publish-now" in result.message
+    assert result.status == PublishStatus.DRAFT_READY
+    assert "草稿" in result.message
     clicked = [c[1] for c in page.calls if c[0] == "click"]
+    assert SELECTORS["video_draft_btn"] in clicked
     assert SELECTORS["video_publish_btn"] not in clicked
 
 
@@ -141,12 +143,13 @@ def test_video_fill_draft_order_upload_title_cover():
         for c in page.calls
         if c[0] not in ("wait_for_selector", "wait_for_url", "wait_for_timeout")
     ]
-    assert kinds == ["goto", "set_input_files", "fill", "click"]
+    assert kinds == ["goto", "set_input_files", "fill", "click", "click"]
     ops = [c for c in page.calls]
     assert ("goto", SELECTORS["video_publish_url"]) in ops
     assert ("set_input_files", SELECTORS["video_upload"], str(Path("pkg/video.mp4"))) in ops
     assert ("fill", SELECTORS["video_title_input"], "突发山火：救援连夜扑救") in ops
     assert ("click", SELECTORS["video_cover"]) in ops
+    assert ("click", SELECTORS["video_draft_btn"]) in ops  # 半自动末步存草稿（D20）
 
 
 def test_video_auto_publish_clicks_video_publish():

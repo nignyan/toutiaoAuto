@@ -95,7 +95,9 @@ def dispatch_item(
 ) -> PublishQueueItem:
     """派发单条队列项：内容包投递到适配器，结果状态与原因落库。
 
-    视频链路无草稿：半自动（auto_publish=False）在此拦截，需走 dispatch_item_now。
+    视频半自动同样走草稿箱（D20 勘误：视频编辑页有「存草稿」按钮），
+    与图文同口径：draft_ready → 人工在头条后台点发布。系统内直达发布
+    仍走 dispatch_item_now（/publish-now，强制点发布）。
     """
     item = _load_item(db, item_id)
     if item.status not in _DISPATCHABLE:
@@ -108,20 +110,16 @@ def dispatch_item(
     account = AccountDao(db).get(item.account_id)
     if prod is None or account is None:  # 防御：1:1 约束下理论不发生
         return _record_failure(db, item, "成品或账号缺失，无法构建内容包")
-    if prod.production_type == ProductionType.VIDEO and not account.auto_publish:
-        raise DispatchError(
-            "bad_status", "视频链路无草稿，半自动发布请走 /publish-now"
-        )
     return _dispatch_with(db, item, prod, account, adapter, local_media)
 
 
 def dispatch_item_now(
     db: DB, item_id: str, adapter: PublishAdapter, local_media: LocalMedia | None = None
 ) -> PublishQueueItem:
-    """本系统触发视频发布（半自动的人工确认动作）。
+    """本系统触发视频发布（系统内直达发布的保留入口）。
 
     仅 pending 且视频形态可发布；内部强制 auto_publish=True 直接点发布，
-    复用 _dispatch_with 投递逻辑。
+    复用 _dispatch_with 投递逻辑。半自动审核走 dispatch_item 草稿箱链路（D20）。
     """
     item = _load_item(db, item_id)
     if item.status != PublishStatus.PENDING:

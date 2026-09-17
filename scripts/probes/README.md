@@ -41,3 +41,9 @@
 | 脚本 | 用途 |
 | --- | --- |
 | probe_cdp_login_state.py | CDP 模式登录态只读探测（复用 mp 标签页，验收前置检查） |
+
+## D20 视频草稿勘误取证（2026-09-17）
+| 脚本 | 用途 |
+| --- | --- |
+| probe_video_draft_btn.py | 上传样例视频进编辑阶段，取证「存草稿/定时发布/发布」按钮（只读不点击） |
+| probe_video_action_buttons.py | 三动作按钮祖先链取证（footer 容器 + 主样式类消歧） |

@@ -1,8 +1,8 @@
-"""图文发布确认定时轮询（D16 后续）：扫描 draft_ready 图文项，命中头条「已发布
+"""发布确认定时轮询（D16 后续）：扫描 draft_ready 图文项，命中头条「已发布
 内容列表」则自动转 published，消除「运营在头条点发布后需回系统手动 confirm」。
 
-仅对图文生效：视频无草稿，其半自动发布走本系统 /publish-now 端点（dispatch_item_now），
-不经本轮询。
+视频半自动同样走草稿箱（D20），但确认保留人工 confirm：list/v2 对视频的
+覆盖未真机验证，轮询暂排除视频，验证可覆盖后再放开。
 """
 
 import asyncio
@@ -33,6 +33,7 @@ def poll_draft_confirms(db: DB, adapter) -> list[str]:
         titles = {t.strip() for t in adapter.list_published_titles(account)}
         for item in acct_items:
             prod = ProductionDao(db).get(item.production_id)
+            # D20：视频 draft_ready 暂不走轮询，确认以人工 confirm 为准（list/v2 视频覆盖未验证）
             if prod is None or prod.production_type == ProductionType.VIDEO:
                 continue
             if prod.title.strip() in titles:

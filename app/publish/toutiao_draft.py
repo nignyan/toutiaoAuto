@@ -23,7 +23,8 @@ from app.models.account import Account
 from app.publish.adapter import ContentFormat, ContentPackage, PublishResult, PublishStatus
 
 # ---- 页面锚点：头条号后台改版时只需改这里 ----
-# 2026-09-16 真机校准（D14）：图文链路 5 键已实测；视频链路/tag 仍为占位（MVP 出界）。
+# 2026-09-16 真机校准（D14）：图文链路 5 键已实测；视频链路 2026-09-17 真机
+# 校准（D16 探测 + D19/D20 勘误重验）：编辑页三动作 存草稿/定时发布/发布。
 # 探测证据存档：.scratch/selector-calibration/（calibration_report*.txt）。
 SELECTORS = {
     # 未登录访问 mp.toutiao.com 会 302 到 /auth/page/login；该按钮仅登录页存在（探测命中 1 处）。
@@ -47,8 +48,12 @@ SELECTORS = {
     "tag_input": "input[placeholder*='标签']",  # 候选全 MISS 未校准；MVP 无标签来源（tags=[]）
     # 真机消歧：图文页同时存在「定时发布」「预览并发布」，原 button:has-text('发布') 会命中两处。
     "publish_btn": "button:has-text('预览并发布')",  # 图文发布
-    # D16 实测：视频页发布按钮（class 含 action-footer-btn subm）。
-    "video_publish_btn": "button:has-text('发布')",
+    # D20 勘误消歧：编辑页「定时发布」在 DOM 序先于「发布」，has-text('发布') 子串
+    # 匹配会误点定时发布（D19 假阳性根因）；「发布」是 footer 内唯一主样式按钮。
+    "video_publish_btn": ".video-batch-footer button.byte-btn-primary",
+    # D20 真机取证（.scratch/video-publish-acceptance/）：编辑页 footer 三按钮
+    # 存草稿（default）/定时发布（default）/发布（primary），均为 BUTTON > SPAN 结构。
+    "video_draft_btn": ".video-batch-footer button:has-text('存草稿')",
     # 已发布内容列表端点（2026-09-17 真机校准：作品管理页自身请求，status=2=已发布；
     # type=0 同时返回文章/微头条，标题字段 contents[].article_attr.title）。
     "published_list_url": (
@@ -120,10 +125,12 @@ class ToutiaoDraftAdapter:
             page.click(publish_sel, timeout=self.timeout_ms)
             return PublishResult(status=PublishStatus.PUBLISHED, message="已自动发布")
         if is_video:
-            # 视频无草稿：半自动应在 dispatch 层拦截走 /publish-now；此处防御返回 failed。
+            # 视频半自动走草稿箱（D20 勘误：编辑页有「存草稿」按钮，D16 记录有误）；
+            # 与图文同口径：存草稿 → 人工在头条后台点发布。
+            page.click(SELECTORS["video_draft_btn"], timeout=self.timeout_ms)
+            page.wait_for_timeout(DRAFT_SETTLE_MS)
             return PublishResult(
-                status=PublishStatus.FAILED,
-                message="视频链路无草稿，半自动发布请走 /publish-now",
+                status=PublishStatus.DRAFT_READY, message="视频草稿已保存，等待人工发布"
             )
         # 图文：平台自动存草稿，等待落盘后返回，人工在草稿箱确认。
         page.wait_for_timeout(DRAFT_SETTLE_MS)
