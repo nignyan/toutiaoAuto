@@ -1,7 +1,0 @@
-== 视频上传页: https://mp.toutiao.com/profile_v4/xigua/upload-video ==
-视频就绪
-点「确定」（一级）
-点「确定」（二次确认）
-弹层已关闭（t=3s）
-封面区最终状态: {'exists': True, 'big_imgs': 0, 'firstImg': '', 'text': '编辑 替换'}
-RESULT: DIALOG_CLOSED_NO_PREVIEW（弹层关闭但封面区未见预览）

@@ -1,9 +1,0 @@
-== CDP 已接管发布页: https://mp.toutiao.com/profile_v4/graphic/publish ==
-== 已填稿，等待自动保存 15s ==
-== 草稿列表直查 ==
-  {"code":0,"draft_list":[{"abstract":"这是 CDP 链路验证的探测正文。此前已确认：Playwright 自启动的自动化浏览器会被服务端以","draft_type":2,"gid":"7686142018013479459","graphic_extra":"{\"abstract\":\"\",\"ad_inject\":0,\"ad_type\":3,\"article_banned\":false,\"article_type\":0,\"article_url\":\"https://mp.toutiao.com/preview_article/?pgc_id=7686142018013479459\",\"boost_impr\":\"\",\"can_comment_level\":0,\"can_not_modify_time_out\":false,\"can_user_del\":true,\"can_user_modify\":true,\"claim_exclusive\":\"1\",\"claim_origin\":false,\"comment_count\":0,\"confirm_reason\":\"\",\"content_word_cnt\":\"144\",\"create_time\":1789569402,\"current_version\":0,\"digg_count\":0,\"display_flags\":\"0\",\"exclusive_review_info\":\"{\\\"claim_time\\\":1789569402,\\\"version\\\":1}\",\"from_crawl\":0,\"from_publish_crawl\":0,\"go_detail_count_v2\":0,\"group_id\":\"7686142018013479459\",\"group_source\":2,\"has_article_pgc\":1,\"has_slave_item\":0,\"has_video\":false,\"has_vote_card\":false,\"id\":\"7686142018013479459\",\"impr_boost_pkg_slave_godetail_count\":0,\"impr_boost_pkg_slave_impr_count\":0,\"impression_count\":0,\"is_draft\":true,\"is_exclusive\":true,\"is_fans_article\":0,\"is_multi_title\":\"0\",\"is_passed\":false,\"i
-== 保存 API 响应 ==
-  https://mp.toutiao.com/mp/agw/article/publish?source=mp&type=article&aid=1231&mp_publish_ab_val=0&msToken=K9s1MbMwz_kxmnZGqN6fTfnQAfBQEL0TIY
-  响应体: {"code":0,"data":{"content":"\u003cp data-track=\"1\"\u003e这是 CDP 链路验证的探测正文。此前已确认：Playwright 自启动的自动化浏览器会被服务端以 7050 拒绝保存，而接管用户真实 Chrome 的 CDP 方式应能通过风控。本条内容仅用于验证草稿自动保存链路，验证完成后可从草稿箱删除。\u003c/p\u003e","pgc_feed_covers":"[]","pgc_id":"7686142018013479459"},"err_no":0,"message":"保存成功","now":1789569403,"reason":"保存成功"}
-== 结论 ==
-✔✔ CDP 链路验证通过：保存成功且草稿箱可见 → 可动手改造适配器
