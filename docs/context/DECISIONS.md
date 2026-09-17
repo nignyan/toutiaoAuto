@@ -161,3 +161,13 @@
 - 假阳性队列项 c449a0e9 改回 failed（publish_result 注明勘误），用同一条队列项重验。
 - 证据：`.scratch/video-publish-acceptance/report.md` D20 节；探针 `scripts/probes/probe_video_draft_btn.py` / `probe_video_action_buttons.py`。
 - **重验通过（2026-09-17）**：failed → publish → 视频存草稿 draft_ready → 用户后台目验/改标题/点发布 → confirm published → list/v2 交叉核验通过（列表新增「测试视频（可忽略）」）。**视频确认进入 list/v2**，但用户发布时改动了标题 → 按生产标题精确匹配的轮询对视频不可靠 → 维持人工 confirm 为主、轮询继续排除视频（有意识的取舍，非验证缺口）。
+
+## D21 视频封面 file input 校准（2026-09-17，真机，探针 v1-v7）
+- 关闭 D16 P1 / D18 出界遗留：视频封面上传链路真机取证并接线适配器。
+- **封面组件结构**：`.xigua-poster-editor > .fake-upload-trigger`（无可见 file input，点内层文本无效，须点 trigger 本体）。点 trigger → 弹层 `.m-poster-upgrade`（封面截取，双 tab「封面截取/本地上传」）→ 切「本地上传」→ 拖拽卡 `.byte-upload.xigua-upload-poster-trigger` 内出现**隐藏 image file input**（`accept=image/jpg,image/jpeg,image/png,image/x-png,image/webp`，`display:none`）。
+- **喂图方式**：直接 `set_input_files` 隐藏 input（无需点拖拽卡触发原生文件框，避开 filechooser 依赖）；实测点卡也会触发 filechooser（accept 同上），两通道等价，选直塞更稳。
+- **收尾流程**：喂图后按宽高比分叉——**16:9 直接进「封面编辑」态**（无裁剪步骤），**非 16:9 先「完成裁剪」**（`.m-poster-upgrade button:has-text('完成裁剪')`）再进编辑态；编辑态渲染完成信号 = 「确定」按钮（`.m-poster-upgrade button.btn-sure`）出现。点「确定」→ **弹二次确认**「完成后无法继续编辑，是否确定完成？」（独立 `.Dialog-container`，非 `.m-poster-upgrade`）→ 再点其内「确定」→ 弹层关闭、封面入库表单（`.xigua-poster-editor` 文案「上传封面」→「编辑 替换」）。
+- **分辨率前置**：封面建议 ≥1920×1080。618×1000 小图喂入后编辑态不渲染（无「确定」按钮、弹层卡住）；1080×1920 竖图被裁成 1080×608 触发低分辨率提示但仍可继续。测试图须用 1920×1080（`scripts/probes/make_test_cover.py` 默认）。
+- **入库不可逆**：二次确认文案「完成后无法继续编辑」→ 封面一旦确定即锁定，故 `_set_video_cover` 失败直接抛出由上层记 failed，不做静默兜底。
+- **SELECTORS 更新**：删除旧 `video_cover`（`.xigua-poster-editor`，仅点击无后续），新增 7 键覆盖完整链路（trigger/dialog/local_tab/input/crop_btn/confirm_btn/second_confirm）；`_fill_draft` 视频封面分支改调 `_set_video_cover`。图文封面分支不变（MVP 图文不填图，走 `video_upload` 兜底）。
+- 证据：`.scratch/selector-calibration/calibration_report_cover_v{1..7}.txt`；探针 `scripts/probes/probe_video_cover_input_v{1..7}.py`（一次性工具，v7 为完整闭环脚本）。pytest 313（新增 2 例：弹层喂图 + 裁剪/二次确认分支），ruff 零违规。

@@ -1,0 +1,45 @@
+== 视频上传页: https://mp.toutiao.com/profile_v4/xigua/upload-video ==
+视频上传完成
+== 触发器 .fake-upload-trigger bounding_box={'x': 490, 'y': 550, 'width': 209, 'height': 118} ==
+== 点击触发器（同时等 filechooser 5s + 弹层取证） ==
+无直接 filechooser → 检查点击后果
+-- 点击触发器后: 可见弹层/封面相关节点 14 处 --
+  [[class*="modal"]] <div class='m-xigua-dialog m-modal m-poster-upgrade m-video-bg'> text='封面截取 本地上传 00:00 下一步'
+  [[class*="popover"]] <button class='byte-btn byte-btn-default byte-btn-size-large byte-btn-shape-square popover-btn'> text='选择合集'
+  [[class*="popover"]] <span class='popover-btn-inner'> text='选择合集'
+  [[class*="upload"]] <div class='pgc-wrapper pgc-index is-full-screen xigua_upload-video-wrapper publish-wrapper'> text='头条号 消息 19 发布视频 发布视频创建合集 d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10'
+  [[class*="upload"]] <div class='garr-video-container upload-video'> text='发布视频创建合集 d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美'
+  [[class*="upload"]] <div class='byte-tabs byte-tabs-horizontal byte-tabs-line byte-tabs-size-default xigua-upload-manage'> text='发布视频创建合集 d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美'
+  [[class*="upload"]] <div class='xigua-upload-video'> text='d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美观的封面有利于推荐'
+  [[class*="upload"]] <div class='xigua-upload-video-content'> text='d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美观的封面有利于推荐'
+  [[class*="upload"]] <div class='byte-upload xigua-upload-video-trigger upload-video-trigger-btn'> text='添加视频'
+  [[class*="upload"]] <div class='byte-upload-trigger'> text='添加视频'
+  [[class*="upload"]] <div class='video-upload-status'> text='上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除'
+  [[class*="upload"]] <div class='fake-upload-trigger'> text='上传封面'
+  [[class*="poster"]] <div class='video-form-item form-item-poster'> text='封面 上传封面 清晰美观的封面有利于推荐，建议分辨率不低于 1920*1080（大小不超过 20M）建议的封面'
+  [[class*="poster"]] <div class='xigua-poster-editor'> text='上传封面'
+-- 点击触发器后: input[type=file] 共 2 处 --
+  [0] visible=False accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg'
+  [1] visible=False accept='.mp4,.flv,.wmv,.avi,.mov,.dat,.asf,.rm,.rmvb,.ram,.mpg,.mpeg'
+== 二级入口 HIT text=本地上传，点击并等 filechooser 5s ==
+二级点击后仍无 filechooser
+-- 二级点击后: 可见弹层/封面相关节点 18 处 --
+  [[class*="modal"]] <div class='m-xigua-dialog m-modal m-poster-upgrade m-video-bg'> text='封面截取 本地上传 点击上传或将文件拖入此区域 清晰美观的封面有利于推荐，建议 >= 1920*1080 下一步'
+  [[class*="popover"]] <button class='byte-btn byte-btn-default byte-btn-size-large byte-btn-shape-square popover-btn'> text='选择合集'
+  [[class*="popover"]] <span class='popover-btn-inner'> text='选择合集'
+  [[class*="upload"]] <div class='pgc-wrapper pgc-index is-full-screen xigua_upload-video-wrapper publish-wrapper'> text='头条号 消息 19 发布视频 发布视频创建合集 d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10'
+  [[class*="upload"]] <div class='garr-video-container upload-video'> text='发布视频创建合集 d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美'
+  [[class*="upload"]] <div class='byte-tabs byte-tabs-horizontal byte-tabs-line byte-tabs-size-default xigua-upload-manage'> text='发布视频创建合集 d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美'
+  [[class*="upload"]] <div class='xigua-upload-video'> text='d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美观的封面有利于推荐'
+  [[class*="upload"]] <div class='xigua-upload-video-content'> text='d17c5f242c23449697d02bd344a840d8.mp4 添加视频 上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除 基本信息 标题 16/30 话题 还可以添加10个话题 封面 上传封面 清晰美观的封面有利于推荐'
+  [[class*="upload"]] <div class='byte-upload xigua-upload-video-trigger upload-video-trigger-btn'> text='添加视频'
+  [[class*="upload"]] <div class='byte-upload-trigger'> text='添加视频'
+  [[class*="upload"]] <div class='video-upload-status'> text='上传成功 d17c5f242c23449697d02bd344a840d8.mp4 视频时长: 10s 修改视频 删除'
+  [[class*="upload"]] <div class='fake-upload-trigger'> text='上传封面'
+  [[class*="upload"]] <div class='byte-upload xigua-upload-poster-trigger upload-thumb-trigger-card'> text='点击上传或将文件拖入此区域 清晰美观的封面有利于推荐，建议 >= 1920*1080'
+  [[class*="upload"]] <div class='byte-upload-trigger'> text='点击上传或将文件拖入此区域 清晰美观的封面有利于推荐，建议 >= 1920*1080'
+  [[class*="upload"]] <div class='byte-upload-trigger-picture'> text='点击上传或将文件拖入此区域 清晰美观的封面有利于推荐，建议 >= 1920*1080'
+  [[class*="upload"]] <div class='byte-upload-trigger-tip'> text='点击上传或将文件拖入此区域 清晰美观的封面有利于推荐，建议 >= 1920*1080'
+  [[class*="poster"]] <div class='video-form-item form-item-poster'> text='封面 上传封面 清晰美观的封面有利于推荐，建议分辨率不低于 1920*1080（大小不超过 20M）建议的封面'
+  [[class*="poster"]] <div class='xigua-poster-editor'> text='上传封面'
+RESULT: COVER_NOT_SET（见上文取证）

@@ -47,3 +47,15 @@
 | --- | --- |
 | probe_video_draft_btn.py | 上传样例视频进编辑阶段，取证「存草稿/定时发布/发布」按钮（只读不点击） |
 | probe_video_action_buttons.py | 三动作按钮祖先链取证（footer 容器 + 主样式类消歧） |
+
+## D21 视频封面 file input 校准（2026-09-17）
+| 脚本 | 用途 |
+| --- | --- |
+| make_test_cover.py | 生成封面校准测试 PNG（纯 zlib，可指定宽高；默认 1920x1080） |
+| probe_video_cover_input.py (v1) | 封面组件结构探测（发现 `.fake-upload-trigger` 无可见 file input） |
+| probe_video_cover_input_v2.py | 点 trigger 弹层取证（发现「本地上传」拖拽卡） |
+| probe_video_cover_input_v3.py | 拖拽卡 filechooser + 隐藏 image input 直塞验证 |
+| probe_video_cover_input_v4.py | 非 16:9 完成裁剪 + 确定流程（低分辨率拦截暴露） |
+| probe_video_cover_input_v5.py | 1920x1080 确定按钮取证（二次确认遮罩） |
+| probe_video_cover_input_v6.py | 确定后长轮询取证（定案二次确认弹窗） |
+| probe_video_cover_input_v7.py | 完整闭环（含二次确认，封面入库验证） |

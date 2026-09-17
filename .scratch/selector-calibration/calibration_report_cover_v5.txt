@@ -1,0 +1,32 @@
+== 视频上传页: https://mp.toutiao.com/profile_v4/xigua/upload-video ==
+视频上传完成
+  轮询: crop=False confirm=True dialog='封面编辑 模版 贴纸 文字 滤镜 我的 推荐 vlog 美食 音乐 时尚 知识 无模版 保存为模板 重选封面 确定'
+喂图后弹层: {'open': True, 'text': '封面编辑 模版 贴纸 文字 滤镜 我的 推荐 vlog 美食 音乐 时尚 知识 无模版 保存为模板 重选封面 确定'}
+-- 点确定前: 弹层内 button 2 个 --
+  text='重选封面' disabled=False visible=True bbox=[1015, 626, 88, 36] class='btn-l btn-cancel'
+  text='确定' disabled=False visible=True bbox=[1119, 626, 70, 36] class='btn-l btn-sure ml16 '
+== get_by_role 点「确定」 ==
+确定后弹层: {'open': True, 'text': '封面编辑 模版 贴纸 文字 滤镜 我的 推荐 vlog 美食 音乐 时尚 知识 无模版 保存为模板 重选封面 确定'}
+弹层仍开 → 再点一次并复查
+  二次点击失败: Locator.click: Timeout 5000ms exceeded.
+Call log:
+  - waiting for get_by_role("button", name="确定", exact=True).first
+    - locator resolved to <button class="btn-l btn-sure ml16 ">确定</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="mask "></div> from <div class="Dialog-container">…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    - waiting for element to be visible, enabled and stable
+
+二次确定后弹层: {'open': True, 'text': '封面编辑 模版 贴纸 文字 滤镜 我的 推荐 vlog 美食 音乐 时尚 知识 无模版 保存为模板 重选封面 确定'}
+封面区最终状态: {'exists': True, 'big_imgs': 0, 'firstImg': '', 'text': '上传封面'}
+-- console 错误（最近 10 条）--
+  TypeError: Cannot read properties of undefined (reading 'network')
+    at https://lf-content-ecology.toutiaostatic.com/obj/tt-content-ecology-fe/pgcfe/mp/web/resource/vendors~dde893e5_9a8a69d01a3a355d
+  Access to fetch at 'https://security.zijieapi.com/api/metrics/emit' from origin 'https://mp.toutiao.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requ
+  Failed to load resource: net::ERR_FAILED
+RESULT: COVER_FLOW_PARTIAL（见上文取证）
