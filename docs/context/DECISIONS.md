@@ -143,3 +143,10 @@
 - 接线：`_dispatch_with` 在 `local_media=None` 且 VIDEO 形态时自动本地化，失败落 failed（publish_result 含「素材本地化失败」），不冒泡 5xx、不投适配器；调用方显式传入 LocalMedia 时跳过下载（测试替身路径不变）。API `get_local_media` 默认返回 None；端点类型 `LocalMedia | None`。
 - 下载：httpx（collector 已有依赖，零新增），timeout 60s，follow_redirects；fetch 可注入测试。
 - 出界（不在本迭代）：视频页封面 `.xigua-poster-editor` 内部 file input 校准（D16 遗留 P1，本地化已产出 cover_path，等校准后接线真实上传）；素材自动清理；图片素材下载（图文分支不填图）。
+
+## D19 视频真实发布实机验收通过（2026-09-17）
+- 验收结论：`/publish-queue/{id}/publish-now` 全链路真机**一次通过**——素材本地化（1MB 样例片落盘 `data/media/`，字节数与源一致）→ CDP 接管真实 Chrome（复用已有 mp 标签页）→ 视频上传（「上传成功」信号命中）→ 填标题 → 点发布 → 队列 `published` + published_at 落库。D16 视频选择器 5 键（video_publish_url/video_upload/video_upload_done/video_title_input/video_publish_btn）真机实战全部命中。
+- 造数口径：collect 新建事件 + 只灌一条真实 URL 视频素材（cleared/B/清晰/密度 80/有署名）→ 规则 1 → VIDEO，QUALIFIED 80 分；标题 PATCH 为「系统联调测试视频（可忽略）」避免公开误导。
+- 工程教训（复用价值）：`TemplateComposer._order_assets` 视频按**入库原序**排前——含空 `source_url` 种子素材的旧事件不能直接复用（本地化 no_url 必败）；造数须保证「第一条视频素材即真实可下载」。另：READY 事件如含 attribution 为空的可用图片素材，参与生产即触发「署名缺失」一票否决。
+- 证据：`.scratch/video-publish-acceptance/report.md`；登录态探针收编 `scripts/probes/probe_cdp_login_state.py`。
+- 遗留：封面 file input 校准（D16 P1，本次无图片素材跳过封面步骤）仍待真机；测试视频需平台侧人工删除。

@@ -36,3 +36,8 @@
 | probe_published_list_v2.py | 进作品管理页抓页面自身 API（SPA 懒加载未捕获，改直查路线） |
 | probe_published_list_v3.py | 直查 list/v2 完整结构 + 管理页长等待交叉验证 |
 | probe_published_list_v4.py | 标题字段终验（article_attr.title 打印真实标题值） |
+
+## D19 视频真实发布验收（2026-09-17）
+| 脚本 | 用途 |
+| --- | --- |
+| probe_cdp_login_state.py | CDP 模式登录态只读探测（复用 mp 标签页，验收前置检查） |
