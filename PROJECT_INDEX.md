@@ -20,4 +20,4 @@
 - **目录导航**：
   - 设计文档：`热点内容自动化工作流_产品设计.md`（产品口径）/ `系统设计文档.md`（代码结构）
   - 源码：`app/`（models / pipeline / publish / daos / api）、`tests/`、`demo/`
-  - 上下文：`docs/context/NOW.md` / `MAP.md` / `RUNBOOK.md` / `DECISIONS.md` / `RISKS.md` / `history/`
+  - 上下文：`docs/context/NOW.md` / `MAP.md` / `RUNBOOK.md` / `DECISIONS.md` / `RISKS.md` / `ROADMAP.md` / `history/`

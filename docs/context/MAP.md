@@ -13,6 +13,7 @@
 - `RUNBOOK.md`：构建/运行/验收步骤。
 - `DECISIONS.md`：已拍板决策与依据。
 - `RISKS.md`：风险与缓解。
+- `ROADMAP.md`：演进项排期（四档 + 明确不做清单）。
 - `history/`：按月完成事项归档。
 
 ## 功能规格（docs/specs/）
