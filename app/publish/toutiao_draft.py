@@ -27,19 +27,29 @@ from app.publish.adapter import ContentFormat, ContentPackage, PublishResult, Pu
 SELECTORS = {
     # 未登录访问 mp.toutiao.com 会 302 到 /auth/page/login；该按钮仅登录页存在（探测命中 1 处）。
     "login_entry": "button:has-text('登录')",
-    "video_publish_url": "https://mp.toutiao.com/profile_v4/xigua/upload-video",  # 未校准，MVP 出界
+    # D16 真机确认：视频发布页 URL 与占位一致。
+    "video_publish_url": "https://mp.toutiao.com/profile_v4/xigua/upload-video",
     # 真机确认：图文发布页 URL 与原占位一致。
     "article_publish_url": "https://mp.toutiao.com/profile_v4/graphic/publish",
-    "video_upload": "input[type=file]",  # 未校准，MVP 出界
+    # D16 实测：视频上传 file input（上传前 1 处、上传后 2 处）。
+    "video_upload": "input[type=file][accept*='video']",
+    # D16 实测：视频上传完成信号（正文出现「上传成功」）。
+    "video_upload_done": "text=上传成功",
     # 真机命中：placeholder='请输入文章标题（2～30个字）'。
     "title_input": "textarea[placeholder*='标题']",
-    # 真机确认正文为 ProseMirror 编辑器；.ProseMirror 比div[contenteditable='true']更精确。
+    # D16 实测：视频标题框（type 空，placeholder='请输入 0～30 个字符'）。
+    "video_title_input": "input[placeholder*='请输入']",
+    # 真机确认正文为 ProseMirror 编辑器；.ProseMirror 比 div[contenteditable='true'] 更精确。
     "body_editor": ".ProseMirror",
+    # D16 实测：视频封面组件（无独立 file input，内部 file input 待 P1 校准）。
+    "video_cover": ".xigua-poster-editor",
     "tag_input": "input[placeholder*='标签']",  # 候选全 MISS 未校准；MVP 无标签来源（tags=[]）
-    # 头条图文页无「存草稿」按钮：平台自动存草稿（footer「草稿保存中...」指示），仅视频链路占位用。
-    "save_draft_btn": "button:has-text('存草稿')",  # 未校准，MVP 出界
-    # 真机消歧：页面同时存在「定时发布」「预览并发布」，原 button:has-text('发布') 会命中两处。
-    "publish_btn": "button:has-text('预览并发布')",  # 点击链路未验证，auto_publish 为 MVP 出界
+    # 真机消歧：图文页同时存在「定时发布」「预览并发布」，原 button:has-text('发布') 会命中两处。
+    "publish_btn": "button:has-text('预览并发布')",  # 图文发布
+    # D16 实测：视频页发布按钮（class 含 action-footer-btn subm）。
+    "video_publish_btn": "button:has-text('发布')",
+    # 已发布内容列表端点（P1 真机校准后填入，供 draft_poller 使用）。
+    "published_list_url": "",
 }
 
 DEFAULT_TIMEOUT_MS = 30_000
@@ -99,14 +109,16 @@ class ToutiaoDraftAdapter:
                 message=f"账号「{account.name}」登录态失效，{hint}",
             )
         self._fill_draft(page, package)
+        is_video = package.format in (ContentFormat.VIDEO, ContentFormat.SLIDESHOW)
         if account.auto_publish:
-            page.click(SELECTORS["publish_btn"], timeout=self.timeout_ms)
+            publish_sel = SELECTORS["video_publish_btn"] if is_video else SELECTORS["publish_btn"]
+            page.click(publish_sel, timeout=self.timeout_ms)
             return PublishResult(status=PublishStatus.PUBLISHED, message="已自动发布")
-        if package.format in (ContentFormat.VIDEO, ContentFormat.SLIDESHOW):
-            # 视频链路仍按「点存草稿」语义（选择器未校准，MVP 出界）。
-            page.click(SELECTORS["save_draft_btn"], timeout=self.timeout_ms)
+        if is_video:
+            # 视频无草稿：半自动应在 dispatch 层拦截走 /publish-now；此处防御返回 failed。
             return PublishResult(
-                status=PublishStatus.DRAFT_READY, message="草稿箱已填好，等待人工发布"
+                status=PublishStatus.FAILED,
+                message="视频链路无草稿，半自动发布请走 /publish-now",
             )
         # 图文：平台自动存草稿，等待落盘后返回，人工在草稿箱确认。
         page.wait_for_timeout(DRAFT_SETTLE_MS)
@@ -137,23 +149,54 @@ class ToutiaoDraftAdapter:
 
     # ---- 填草稿 ----
     def _fill_draft(self, page: Any, package: ContentPackage) -> None:
-        if package.format in (ContentFormat.VIDEO, ContentFormat.SLIDESHOW):
+        is_video = package.format in (ContentFormat.VIDEO, ContentFormat.SLIDESHOW)
+        if is_video:
             page.goto(SELECTORS["video_publish_url"])
             page.set_input_files(SELECTORS["video_upload"], str(package.video_path))
+            # 等视频上传完成（D16：上传异步，标题框先渲染、完成后正文出现「上传成功」）。
+            page.wait_for_selector(SELECTORS["video_upload_done"], timeout=self.timeout_ms)
+            title_sel = SELECTORS["video_title_input"]
         else:
             page.goto(SELECTORS["article_publish_url"])
+            title_sel = SELECTORS["title_input"]
 
-        page.fill(SELECTORS["title_input"], package.title, timeout=self.timeout_ms)
+        page.fill(title_sel, package.title, timeout=self.timeout_ms)
 
-        if package.body:
+        if package.body and not is_video:  # 视频无正文框（D16 实测）
             page.fill(SELECTORS["body_editor"], package.body, timeout=self.timeout_ms)
 
-        for tag in package.tags:
-            page.fill(SELECTORS["tag_input"], tag, timeout=self.timeout_ms)
-            page.keyboard.press("Enter")
+        if package.tags and not is_video:  # 视频无标签框（D16 实测）
+            for tag in package.tags:
+                page.fill(SELECTORS["tag_input"], tag, timeout=self.timeout_ms)
+                page.keyboard.press("Enter")
 
         if package.cover_path:
-            page.set_input_files(SELECTORS["video_upload"], str(package.cover_path))
+            if is_video:
+                # 视频封面走 .xigua-poster-editor 组件（内部 file input 待 P1 校准）。
+                page.click(SELECTORS["video_cover"], timeout=self.timeout_ms)
+            else:
+                page.set_input_files(SELECTORS["video_upload"], str(package.cover_path))
+
+    # ---- 查询已发布列表 ----
+    def list_published_titles(self, account: Account) -> list[str]:
+        """查询头条已发布内容标题列表（P1 校准端点后生效）。
+
+        published_list_url 未校准（空）时返回空列表，轮询不误确认。
+        """
+        url = SELECTORS.get("published_list_url", "")
+        if not url:
+            return []
+        with self._open_cdp_page() as page:
+            if not self._is_logged_in(page):
+                return []
+            raw = page.evaluate(
+                "u => fetch(u, {credentials: 'include'}).then(r => r.text())", url
+            )
+            return self._parse_published_titles(raw)
+
+    def _parse_published_titles(self, raw: str) -> list[str]:
+        """从已发布列表响应解析标题（P1 校准字段后实现；当前占位返回空）。"""
+        return []
 
     # ---- 浏览器上下文 ----
     def _open_page(self, profile_dir: str):

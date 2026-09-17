@@ -1,5 +1,7 @@
 """发布执行测试（D13）：内容包构建、结果映射、派发联动、状态流转守卫。"""
 
+from pathlib import Path
+
 import pytest
 
 from app.daos import DB, AccountDao, ProductionDao, PublishQueueDao
@@ -13,9 +15,11 @@ from app.models import (
 )
 from app.pipeline.dispatcher import (
     DispatchError,
+    LocalMedia,
     build_package,
     confirm_published,
     dispatch_item,
+    dispatch_item_now,
     map_result,
     skip_item,
     unskip_item,
@@ -85,15 +89,27 @@ def _enqueue(db: DB, status: PublishStatus = PublishStatus.PENDING, **kw) -> Pub
 
 # ---- 纯函数 ----
 
-def test_build_package_maps_article_with_title_body() -> None:
+def test_build_package_article_for_text_and_slideshow() -> None:
+    for ptype in (ProductionType.TEXT, ProductionType.IMAGE_SLIDESHOW):
+        prod = Production(
+            event_id="ev1", production_type=ptype, title="标题X", body="正文Y"
+        )
+        pkg = build_package(prod)
+        assert pkg.title == "标题X"
+        assert pkg.body == "正文Y"
+        assert pkg.format == ContentFormat.ARTICLE
+
+
+def test_build_package_video_requires_local_media() -> None:
     prod = Production(
         event_id="ev1", production_type=ProductionType.VIDEO, title="标题X", body="正文Y"
     )
-    pkg = build_package(prod)
-    assert pkg.title == "标题X"
-    assert pkg.body == "正文Y"
-    assert pkg.format == ContentFormat.ARTICLE  # MVP 无本地媒体，按图文投递
-    assert pkg.video_path is None and pkg.cover_path is None and pkg.tags == []
+    # 缺本地视频文件 → ContentPackage 校验失败（正确失败而非误发为图文）
+    with pytest.raises(Exception):
+        build_package(prod)
+    pkg = build_package(prod, LocalMedia(video_path=Path("v.mp4")))
+    assert pkg.format == ContentFormat.VIDEO
+    assert pkg.video_path == Path("v.mp4")
 
 
 def test_build_package_rejects_empty_body() -> None:
@@ -286,4 +302,66 @@ def test_confirm_rejects_non_draft_ready(db) -> None:
 
     with pytest.raises(DispatchError) as ei:
         confirm_published(db, item.id)
+    assert ei.value.kind == "bad_status"
+
+
+# ---- 视频链路（dispatch_item 拦截 + dispatch_item_now）----
+
+def _video_production(db) -> Production:
+    return _production(db, production_type=ProductionType.VIDEO)
+
+
+def test_dispatch_video_semi_auto_rejected(db) -> None:
+    _account(db)  # auto_publish=False
+    _video_production(db)
+    item = _enqueue(db)
+
+    with pytest.raises(DispatchError) as ei:
+        dispatch_item(db, item.id, FakeAdapter())
+    assert ei.value.kind == "bad_status"
+    assert "publish-now" in str(ei.value)
+
+
+def test_dispatch_video_auto_publish_ok(db) -> None:
+    _account(db, auto_publish=True)
+    _video_production(db)
+    item = _enqueue(db)
+    adapter = FakeAdapter(PublishResult(status=AdapterStatus.PUBLISHED, message="已自动发布"))
+
+    out = dispatch_item(db, item.id, adapter, LocalMedia(video_path=Path("v.mp4")))
+
+    assert out.status == PublishStatus.PUBLISHED
+
+
+def test_dispatch_item_now_video_forces_publish(db) -> None:
+    acc = _account(db)  # auto_publish=False
+    _video_production(db)
+    item = _enqueue(db)
+    adapter = FakeAdapter(PublishResult(status=AdapterStatus.PUBLISHED, message="已自动发布"))
+
+    out = dispatch_item_now(db, item.id, adapter, LocalMedia(video_path=Path("v.mp4")))
+
+    assert out.status == PublishStatus.PUBLISHED
+    _, got_acc = adapter.calls[0]
+    assert got_acc.auto_publish is True  # 半自动人工确认 = 强制点发布
+    assert got_acc.id == acc.id
+
+
+def test_dispatch_item_now_rejects_non_video(db) -> None:
+    _account(db)
+    _production(db)  # IMAGE_SLIDESHOW → 图文
+    item = _enqueue(db)
+
+    with pytest.raises(DispatchError) as ei:
+        dispatch_item_now(db, item.id, FakeAdapter())
+    assert ei.value.kind == "bad_status"
+
+
+def test_dispatch_item_now_rejects_non_pending(db) -> None:
+    _account(db)
+    _video_production(db)
+    item = _enqueue(db, status=PublishStatus.DRAFT_READY)
+
+    with pytest.raises(DispatchError) as ei:
+        dispatch_item_now(db, item.id, FakeAdapter())
     assert ei.value.kind == "bad_status"

@@ -121,3 +121,15 @@
   - 无正文/描述框、无标签框、**无「存草稿」按钮**。
 - 关键冲突：视频页是「上传 → 标题+封面 → 发布」两段式，**无草稿机制**，与 MVP「填草稿箱 + 人工点发布」语义冲突（当前适配器视频分支 `page.click(save_draft_btn)` 在视频页必超时）。
 - 拍板：维持视频链路 MVP 出界；选择器结论归档，待产品确认「直接发布 vs 草稿」口径后再接线。前置依赖：素材本地化 + 发布口径确认。
+
+## D17 图文/视频双模式发布（2026-09-17 用户拍板）
+- 取代 D16 的视频出界结论：产品已确认口径，视频半自动走「本系统发布」，落地为账号级 `auto_publish` 开关统一覆盖两条链路。
+- 全自动（`auto_publish=True`）：图文、视频都由系统直接点发布。
+- 半自动（`auto_publish=False`，默认）：
+  - 图文有草稿：系统自动存草稿 → 用户在头条后台点发布 → 系统**定时轮询「已发布列表」自动确认** published。
+  - 视频无草稿：用户在本系统后台审核 → 点本系统「发布」(`POST /publish-queue/{item_id}/publish-now`) → 系统强制点发布。
+- 队列状态：视频半自动**不新增状态、不复用 draft_ready**，走 `pending → publish-now → published` 直达；`dispatch_item` 对视频+非自动发布拦截（409 提示走 publish-now）。
+- 形态映射：`build_package` 按 `production_type` 单点显式映射（`VIDEO→video`、`IMAGE_SLIDESHOW/TEXT→article` 退化图文），两套 `ContentFormat` 枚举不合并；`LocalMedia` 作素材本地化注入点，视频缺 `video_path` 校验失败落 failed（正确失败而非误发）。
+- 定时轮询：零依赖 asyncio（`lifespan` 内 `create_task`，Playwright 走 `asyncio.to_thread`）；`poll_draft_confirms` 扫 `draft_ready` 图文项，标题归一化精确匹配；抽 `_mark_published` 供人工 confirm 与轮询复用。间隔环境变量 `AUTO_CONFIRM_INTERVAL`，默认 300s。
+- 视频适配器：回填 D16 选择器（video_upload / video_title_input / video_cover / video_publish_btn），删除 `save_draft_btn` 坏分支；新增 `list_published_titles` + `_parse_published_titles`。
+- 出界/待办：素材本地化（产本地视频/封面）仍拆出独立迭代；`published_list_url` 端点 P1 待真机校准（校准前轮询空转，不误确认）。

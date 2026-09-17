@@ -121,40 +121,41 @@ def test_package_title_required():
 
 # ---- 适配器行为 ----
 
-def test_fill_draft_stops_at_save_draft_by_default():
+def test_video_semi_auto_returns_failed_without_clicking_publish():
     page = FakePage(logged_in=True)
     result = make_adapter(page).publish(video_package(), make_account())
 
-    assert result.status == PublishStatus.DRAFT_READY
+    assert result.status == PublishStatus.FAILED
+    assert "publish-now" in result.message
     clicked = [c[1] for c in page.calls if c[0] == "click"]
-    assert SELECTORS["save_draft_btn"] in clicked
-    assert SELECTORS["publish_btn"] not in clicked
+    assert SELECTORS["video_publish_btn"] not in clicked
 
 
-def test_fill_draft_order_goto_upload_title_body_tags_cover():
+def test_video_fill_draft_order_upload_title_cover():
     page = FakePage(logged_in=True)
     make_adapter(page).publish(video_package(), make_account())
 
-    kinds = [c[0] for c in page.calls if c[0] not in ("wait_for_selector", "wait_for_url")]
-    assert kinds == [
-        "goto", "set_input_files", "fill", "fill",
-        "fill", "press", "fill", "press",  # 两个标签
-        "set_input_files",  # 封面
-        "click",  # 存草稿
+    kinds = [
+        c[0]
+        for c in page.calls
+        if c[0] not in ("wait_for_selector", "wait_for_url", "wait_for_timeout")
     ]
-    ops = [c for c in page.calls if c[0] not in ("wait_for_selector", "wait_for_url")]
-    assert ops[1] == ("set_input_files", SELECTORS["video_upload"], str(Path("pkg/video.mp4")))
-    assert ops[2] == ("fill", SELECTORS["title_input"], "突发山火：救援连夜扑救")
+    assert kinds == ["goto", "set_input_files", "fill", "click"]
+    ops = [c for c in page.calls]
+    assert ("goto", SELECTORS["video_publish_url"]) in ops
+    assert ("set_input_files", SELECTORS["video_upload"], str(Path("pkg/video.mp4"))) in ops
+    assert ("fill", SELECTORS["video_title_input"], "突发山火：救援连夜扑救") in ops
+    assert ("click", SELECTORS["video_cover"]) in ops
 
 
-def test_auto_publish_clicks_publish_instead_of_draft():
+def test_video_auto_publish_clicks_video_publish():
     page = FakePage(logged_in=True)
     result = make_adapter(page).publish(video_package(), make_account(auto_publish=True))
 
     assert result.status == PublishStatus.PUBLISHED
     clicked = [c[1] for c in page.calls if c[0] == "click"]
-    assert SELECTORS["publish_btn"] in clicked
-    assert SELECTORS["save_draft_btn"] not in clicked
+    assert SELECTORS["video_publish_btn"] in clicked
+    assert SELECTORS["publish_btn"] not in clicked
 
 
 def test_needs_login_short_circuits():
@@ -168,7 +169,8 @@ def test_needs_login_short_circuits():
 def test_logged_in_detected_via_timeout_when_entry_absent():
     """真实 Playwright 等不到登录入口会抛超时而非返回 None——应视为已登录。"""
     page = RealTimeoutPage(logged_in=True)
-    result = make_adapter(page).publish(video_package(), make_account())
+    pkg = ContentPackage(title="图文快讯", body="正文", format=ContentFormat.ARTICLE)
+    result = make_adapter(page).publish(pkg, make_account())
 
     assert result.status == PublishStatus.DRAFT_READY
 

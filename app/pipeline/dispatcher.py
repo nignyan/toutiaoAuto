@@ -5,10 +5,12 @@ dispatch_item 把一条队列项派发到 PublishAdapter：由 Production 构建
 纯状态流转。与 producer/allocator 同构：错误类型 + 纯函数 + 编排函数。
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from app.daos import DB, AccountDao, ProductionDao, PublishQueueDao
-from app.models import Production, PublishQueueItem, PublishStatus
+from app.models import Production, ProductionType, PublishQueueItem, PublishStatus
 from app.publish.adapter import (
     ContentFormat,
     ContentPackage,
@@ -48,16 +50,47 @@ def map_result(result: PublishResult) -> PublishStatus:
     return _RESULT_MAP[result.status]
 
 
-def build_package(production: Production) -> ContentPackage:
+@dataclass
+class LocalMedia:
+    """本地媒体文件路径（素材本地化的注入点）。
+
+    MVP 尚未做素材本地化：默认全空，视频形态会因缺 video_path 被
+    ContentPackage 校验拦截（落 failed，正确失败而非误发）。素材本地化
+    迭代完成后由 get_local_media 依赖注入真实路径。
+    """
+
+    video_path: Path | None = None
+    cover_path: Path | None = None
+    image_paths: list[Path] = field(default_factory=list)
+
+
+# 生产形态 → 投递内容包形态的显式映射（生产侧 ProductionType 与投递侧
+# ContentFormat 命名不同，此处单点对齐，不合并两套枚举）。
+_FORMAT_MAP = {
+    ProductionType.VIDEO: ContentFormat.VIDEO,
+    ProductionType.IMAGE_SLIDESHOW: ContentFormat.ARTICLE,  # 图集 MVP 退化为图文
+    ProductionType.TEXT: ContentFormat.ARTICLE,
+}
+
+
+def build_package(
+    production: Production, local_media: LocalMedia | None = None
+) -> ContentPackage:
     """由成品构建标准内容包（纯函数）。
 
-    MVP 出界说明（规格 D13 §1）：素材均为远程 URL、无本地媒体文件，
-    内容包按图文形态只填标题/正文/标签；媒体上传列演进项。
+    按 production_type 决定内容包形态；视频/图集本地媒体文件来自 local_media
+    （素材本地化注入点，默认空）。视频缺 video_path 会触发 ContentPackage
+    校验失败，由调用方落 failed。
     """
+    fmt = _FORMAT_MAP[production.production_type]
+    media = local_media or LocalMedia()
     return ContentPackage(
         title=production.title,
         body=production.body,
-        format=ContentFormat.ARTICLE,
+        format=fmt,
+        video_path=media.video_path,
+        cover_path=media.cover_path,
+        image_paths=media.image_paths,
     )
 
 
@@ -68,8 +101,13 @@ def _load_item(db: DB, item_id: str) -> PublishQueueItem:
     return item
 
 
-def dispatch_item(db: DB, item_id: str, adapter: PublishAdapter) -> PublishQueueItem:
-    """派发单条队列项：内容包投递到适配器，结果状态与原因落库。"""
+def dispatch_item(
+    db: DB, item_id: str, adapter: PublishAdapter, local_media: LocalMedia | None = None
+) -> PublishQueueItem:
+    """派发单条队列项：内容包投递到适配器，结果状态与原因落库。
+
+    视频链路无草稿：半自动（auto_publish=False）在此拦截，需走 dispatch_item_now。
+    """
     item = _load_item(db, item_id)
     if item.status not in _DISPATCHABLE:
         raise DispatchError(
@@ -81,9 +119,47 @@ def dispatch_item(db: DB, item_id: str, adapter: PublishAdapter) -> PublishQueue
     account = AccountDao(db).get(item.account_id)
     if prod is None or account is None:  # 防御：1:1 约束下理论不发生
         return _record_failure(db, item, "成品或账号缺失，无法构建内容包")
+    if prod.production_type == ProductionType.VIDEO and not account.auto_publish:
+        raise DispatchError(
+            "bad_status", "视频链路无草稿，半自动发布请走 /publish-now"
+        )
+    return _dispatch_with(db, item, prod, account, adapter, local_media)
 
+
+def dispatch_item_now(
+    db: DB, item_id: str, adapter: PublishAdapter, local_media: LocalMedia | None = None
+) -> PublishQueueItem:
+    """本系统触发视频发布（半自动的人工确认动作）。
+
+    仅 pending 且视频形态可发布；内部强制 auto_publish=True 直接点发布，
+    复用 _dispatch_with 投递逻辑。
+    """
+    item = _load_item(db, item_id)
+    if item.status != PublishStatus.PENDING:
+        raise DispatchError(
+            "bad_status", f"队列项状态为 {item.status.value}，仅 pending 可本系统发布"
+        )
+    prod = ProductionDao(db).get(item.production_id)
+    account = AccountDao(db).get(item.account_id)
+    if prod is None or account is None:
+        return _record_failure(db, item, "成品或账号缺失，无法构建内容包")
+    if prod.production_type != ProductionType.VIDEO:
+        raise DispatchError("bad_status", "本系统发布仅用于视频链路")
+    account = account.model_copy(update={"auto_publish": True})
+    return _dispatch_with(db, item, prod, account, adapter, local_media)
+
+
+def _dispatch_with(
+    db: DB,
+    item: PublishQueueItem,
+    prod: Production,
+    account,
+    adapter: PublishAdapter,
+    local_media: LocalMedia | None = None,
+) -> PublishQueueItem:
+    """构建内容包并投递适配器，结果落库（dispatch_item / dispatch_item_now 共用）。"""
     try:
-        package = build_package(prod)
+        package = build_package(prod, local_media)
     except Exception as exc:  # noqa: BLE001 内容包校验失败（如正文为空）按失败落库
         return _record_failure(db, item, f"error: {exc}")
 
@@ -138,6 +214,21 @@ def unskip_item(db: DB, item_id: str) -> PublishQueueItem:
     return item
 
 
+def _mark_published(db: DB, item: PublishQueueItem, reason: str) -> PublishQueueItem:
+    """把队列项标为已发布并落 published_at（人工确认 / 轮询自动确认共用）。"""
+    published_at = _utc_now()
+    PublishQueueDao(db).update_status(
+        item.id,
+        PublishStatus.PUBLISHED,
+        publish_result=reason,
+        published_at=published_at,
+    )
+    item.status = PublishStatus.PUBLISHED
+    item.publish_result = reason
+    item.published_at = published_at
+    return item
+
+
 def confirm_published(db: DB, item_id: str) -> PublishQueueItem:
     """人工确认已发布（头条后台点完发布后回系统记录）：仅 draft_ready 可确认。"""
     item = _load_item(db, item_id)
@@ -145,14 +236,4 @@ def confirm_published(db: DB, item_id: str) -> PublishQueueItem:
         raise DispatchError(
             "bad_status", f"队列项状态为 {item.status.value}，仅 draft_ready 可确认发布"
         )
-    published_at = _utc_now()
-    PublishQueueDao(db).update_status(
-        item.id,
-        PublishStatus.PUBLISHED,
-        publish_result="人工确认已发布",
-        published_at=published_at,
-    )
-    item.status = PublishStatus.PUBLISHED
-    item.publish_result = "人工确认已发布"
-    item.published_at = published_at
-    return item
+    return _mark_published(db, item, "人工确认已发布")

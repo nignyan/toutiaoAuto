@@ -1,10 +1,10 @@
 # NOW — 当前开发状态
 
-> 最后更新：2026-09-16
+> 最后更新：2026-09-17
 
 ## 当前阶段
-- 「数据回流」闭环（D15，口径见 `DECISIONS.md` 与 `docs/specs/2026-09-16_数据回流_设计文档.md`）：表现数据人工回填（每成品 1:1 upsert）→ 四维分析（形态/时段/垂类/标题长度，互动率为基准）→ 确定性生成建议动作 → 运营确认/驳回/回滚，**不自动调参**（D3）；审核状态回流（§4.6 遗留）随表现记录落库。
-- 下一步：MVP 全链路已贯通（采集→生产→发布→回流），剩余里程碑为头条视频链路选择器校准（需用户真机环境）与运营实机验收。
+- 「图文/视频双模式发布」闭环（D17）：账号级 `auto_publish` 开关统一覆盖两条链路——全自动直接点发布；半自动图文存草稿+头条点发布+定时轮询自动确认，视频走本系统 `/publish-now` 端点强制点发布。
+- 下一步：`published_list_url`（头条已发布列表端点）真机校准（探针 `scripts/probes/probe_published_list.py` 已备）+ 素材本地化（产本地视频/封面，视频真实发布前置）。
 
 ## 活动里程碑
 - [x] 产品设计定稿（2026-09-15）
@@ -20,12 +20,13 @@
 - [x] 发布执行（后端：dispatcher + 6 端点，队列 draft_ready 状态机 + sort_key，2026-09-16）
 - [x] 头条后台选择器实测校准 + 存草稿 CDP 路线（图文链路，2026-09-16；视频链路仍占位）
 - [x] 数据回流（§4.7，MVP 仅建议动作：reflux 模型/DAO/编排 + 8 端点，2026-09-16）
-- [ ] 头条视频链路发布口径待产品确认（真机已校准：视频页无存草稿、仅标题+封面；口径确认 + 素材本地化后接线，2026-09-17）
+- [x] 图文/视频双模式发布（后端：build_package 形态映射 + /publish-now 端点 + draft_poller 定时轮询 + 视频适配器修正，2026-09-17）
 
 ## 主要阻塞
-- 视频链路发布口径待产品确认（真机已确认为「无草稿、仅标题+封面」，MVP 维持出界，见 DECISIONS D16）；其余无阻塞（数据回流表现数据由运营人工回填）。
+- 头条已发布列表端点（`published_list_url`）待真机校准（校准前图文定时轮询空转不误确认）；素材本地化（产本地视频/封面）拆出为视频真实发布前置。其余无阻塞。
 
 ## 最近闭环摘要
+- 图文/视频双模式发布闭环（D17）：账号级 auto_publish 开关覆盖两条链路（全自动直接发布；半自动图文存草稿+定时轮询自动确认、视频走 /publish-now 强制点发布）；build_package 按 production_type 形态映射（LocalMedia 为素材本地化注入点）；视频适配器回填 D16 选择器并删除 save_draft_btn 坏分支；新增 draft_poller 零依赖 asyncio 定时轮询。验证：pytest 293 例全绿（新增 9 例）、ruff 零违规。遗留：published_list_url 待真机校准 + 素材本地化拆出。
 - 数据回流闭环（D15）：`reflux_records`（production_id 唯一，upsert 覆盖取最新，created_at/首次回填保留）+ `reflux_suggestions`（pending/confirmed/rejected；确认→采纳留痕、驳回终态、**回滚回到待确认可再采纳**——拍板口径）；`publish_queue` 新增 `published_at`（confirm/auto_publish 成功时落库，存量库补列迁移）。分析纯函数 `build_report` 四维聚合 + `generate_suggestions` 确定性规则（组样本 ≥2、互动率相对差 ≥30% 且绝对差 ≥1pp、每维度至多 1 条、垂类排除通用且需 ≥2 个非通用垂类）。API 新增 8 端点：`POST/GET /reflux/records`（回填守卫：仅 published 可回填）、`POST /reflux/analyze`（重建 pending 保留已决策）、`GET /reflux/analysis`（只读）、`GET /reflux/suggestions` + confirm/reject/rollback。
 - 验证：pytest 284 例全绿（本批新增 63）、ruff 零违规、demo 冒烟 14 项通过（demo 数据回流视图维持 mock，未接线）。
 - 工程教训（D15）：PowerShell 无 `&&`/heredoc，git commit 用 `;` 分隔与 `-m`×2；ruff 对 `.scratch/` 一次性探针脚本误报，`extend-exclude` 排除证据区。

@@ -32,7 +32,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-extend-exclude = [".scratch"]  # 证据/追踪工作区，一次性探针脚本不参与静态检查
+extend-exclude = [".scratch", "scripts/probes"]  # 证据/追踪工作区与一次性探针脚本不参与静态检查
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

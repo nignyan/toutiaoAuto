@@ -48,8 +48,10 @@ from app.pipeline.collector import (
 from app.pipeline.composer import ContentComposer, TemplateComposer
 from app.pipeline.dispatcher import (
     DispatchError,
+    LocalMedia,
     confirm_published,
     dispatch_item,
+    dispatch_item_now,
     skip_item,
     unskip_item,
 )
@@ -91,6 +93,12 @@ def get_adapter() -> PublishAdapter:
     D14：设置环境变量 TOUTIAO_CDP_ENDPOINT 时走 CDP 模式连接用户真实 Chrome
     （profile 模式的自动化指纹会触发头条风控，保存接口 7050）。"""
     return ToutiaoDraftAdapter(cdp_endpoint=os.environ.get("TOUTIAO_CDP_ENDPOINT") or None)
+
+
+def get_local_media() -> LocalMedia:
+    """本地媒体文件注入点（素材本地化）；MVP 未做，默认空，视频会因缺
+    video_path 而落 failed。测试用 dependency_overrides 注入假文件。"""
+    return LocalMedia()
 
 
 # ---- 请求/响应模型 ----
@@ -455,6 +463,7 @@ def publish_queue_item(
     item_id: str,
     db: DB = Depends(get_db),
     adapter: PublishAdapter = Depends(get_adapter),
+    local_media: LocalMedia = Depends(get_local_media),
 ) -> PublishQueueItem:
     """派发单条队列项到发布适配器（RPA 填稿/自动发布），结果落库。
 
@@ -462,7 +471,24 @@ def publish_queue_item(
     404 队列项不存在；409 状态守卫（仅 pending/failed 可派发）。
     """
     try:
-        return dispatch_item(db, item_id, adapter)
+        return dispatch_item(db, item_id, adapter, local_media)
+    except DispatchError as exc:
+        raise _dispatch_error(exc) from exc
+
+
+@router.post("/publish-queue/{item_id}/publish-now", response_model=PublishQueueItem)
+def publish_queue_item_now(
+    item_id: str,
+    db: DB = Depends(get_db),
+    adapter: PublishAdapter = Depends(get_adapter),
+    local_media: LocalMedia = Depends(get_local_media),
+) -> PublishQueueItem:
+    """本系统触发视频发布（半自动的人工确认动作，内部强制点发布）。
+
+    404 不存在；409 非 pending 或非视频形态。
+    """
+    try:
+        return dispatch_item_now(db, item_id, adapter, local_media)
     except DispatchError as exc:
         raise _dispatch_error(exc) from exc
 
