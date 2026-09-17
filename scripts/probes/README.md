@@ -28,3 +28,11 @@
 | probe_video_selectors.py | 视频页选择器结构探测（不上传） |
 | probe_video_upload_form.py | 上传测试视频 + 表单探测 |
 | probe_video_form_ready.py | 上传完成终态二次探测 |
+
+## D17 已发布列表校准（2026-09-17）
+| 脚本 | 用途 |
+| --- | --- |
+| probe_published_list.py (v1) | 首页入口链接 + 候选列表端点直查（发现 list/v2 线索） |
+| probe_published_list_v2.py | 进作品管理页抓页面自身 API（SPA 懒加载未捕获，改直查路线） |
+| probe_published_list_v3.py | 直查 list/v2 完整结构 + 管理页长等待交叉验证 |
+| probe_published_list_v4.py | 标题字段终验（article_attr.title 打印真实标题值） |

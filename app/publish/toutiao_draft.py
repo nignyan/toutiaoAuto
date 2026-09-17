@@ -15,6 +15,7 @@
 - 页面选择器（SELECTORS）依赖头条号后台 DOM，平台改版后需实测校准。
 """
 
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -48,8 +49,12 @@ SELECTORS = {
     "publish_btn": "button:has-text('预览并发布')",  # 图文发布
     # D16 实测：视频页发布按钮（class 含 action-footer-btn subm）。
     "video_publish_btn": "button:has-text('发布')",
-    # 已发布内容列表端点（P1 真机校准后填入，供 draft_poller 使用）。
-    "published_list_url": "",
+    # 已发布内容列表端点（2026-09-17 真机校准：作品管理页自身请求，status=2=已发布；
+    # type=0 同时返回文章/微头条，标题字段 contents[].article_attr.title）。
+    "published_list_url": (
+        "https://mp.toutiao.com/mp/agw/creator_center/list/v2"
+        "?status=2&type=0&page_size=20&need_stat=true&wenda_type=1&app_id=1231"
+    ),
 }
 
 DEFAULT_TIMEOUT_MS = 30_000
@@ -179,12 +184,14 @@ class ToutiaoDraftAdapter:
 
     # ---- 查询已发布列表 ----
     def list_published_titles(self, account: Account) -> list[str]:
-        """查询头条已发布内容标题列表（P1 校准端点后生效）。
+        """查询头条已发布内容标题列表（2026-09-17 真机校准后生效）。
 
-        published_list_url 未校准（空）时返回空列表，轮询不误确认。
+        仅 CDP 模式支持：fetch 同源接口需页面凭据（credentials include）。
+        未配置 cdp_endpoint（profile 模式）、登录态失效或响应异常时返回空列表，
+        轮询不误确认。
         """
         url = SELECTORS.get("published_list_url", "")
-        if not url:
+        if not url or not self.cdp_endpoint:
             return []
         with self._open_cdp_page() as page:
             if not self._is_logged_in(page):
@@ -195,8 +202,27 @@ class ToutiaoDraftAdapter:
             return self._parse_published_titles(raw)
 
     def _parse_published_titles(self, raw: str) -> list[str]:
-        """从已发布列表响应解析标题（P1 校准字段后实现；当前占位返回空）。"""
-        return []
+        """从已发布列表响应解析标题（2026-09-17 真机校准：article_attr.title）。
+
+        响应结构：{code, message, contents: [{article_attr: {title, status, ...}}], ...}。
+        解析失败 / code 非 0 / 结构异常一律返回空，绝不让轮询误确认。
+        """
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+        if not isinstance(data, dict) or data.get("code") != 0:
+            return []
+        contents = data.get("contents")
+        if not isinstance(contents, list):
+            return []
+        titles: list[str] = []
+        for item in contents:
+            attr = item.get("article_attr") if isinstance(item, dict) else None
+            title = attr.get("title") if isinstance(attr, dict) else None
+            if isinstance(title, str) and title.strip():
+                titles.append(title.strip())
+        return titles
 
     # ---- 浏览器上下文 ----
     def _open_page(self, profile_dir: str):

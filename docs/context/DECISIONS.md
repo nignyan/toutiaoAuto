@@ -132,4 +132,5 @@
 - 形态映射：`build_package` 按 `production_type` 单点显式映射（`VIDEO→video`、`IMAGE_SLIDESHOW/TEXT→article` 退化图文），两套 `ContentFormat` 枚举不合并；`LocalMedia` 作素材本地化注入点，视频缺 `video_path` 校验失败落 failed（正确失败而非误发）。
 - 定时轮询：零依赖 asyncio（`lifespan` 内 `create_task`，Playwright 走 `asyncio.to_thread`）；`poll_draft_confirms` 扫 `draft_ready` 图文项，标题归一化精确匹配；抽 `_mark_published` 供人工 confirm 与轮询复用。间隔环境变量 `AUTO_CONFIRM_INTERVAL`，默认 300s。
 - 视频适配器：回填 D16 选择器（video_upload / video_title_input / video_cover / video_publish_btn），删除 `save_draft_btn` 坏分支；新增 `list_published_titles` + `_parse_published_titles`。
-- 出界/待办：素材本地化（产本地视频/封面）仍拆出独立迭代；`published_list_url` 端点 P1 待真机校准（校准前轮询空转，不误确认）。
+- 出界/待办：素材本地化（产本地视频/封面）仍拆出独立迭代。
+- 已发布列表真机校准（2026-09-17 收尾）：`published_list_url` = `/mp/agw/creator_center/list/v2?status=2&type=0&page_size=20&need_stat=true&wenda_type=1&app_id=1231`（作品管理页自身请求，直查与页面捕获双验证）；标题字段 `contents[].article_attr.title`，`status=2`=已发布，`type` 1=微头条/2=文章（文章+微头条一并返回，轮询按标题精确匹配互不干扰）。`_parse_published_titles` 解析异常/code 非 0 一律返回空（不误确认）；`list_published_titles` 仅 CDP 模式生效（fetch 同源需页面凭据），profile 模式与未登录返回空。探针证据 `.scratch/selector-calibration/published_list*_check.txt`。

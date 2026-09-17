@@ -1,5 +1,6 @@
 """头条草稿箱适配器单测：用 FakePage 验证流程顺序与 auto_publish 开关语义。"""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -233,16 +234,31 @@ def test_account_defaults_draft_adapter_and_auto_publish_off():
 # ---- CDP 模式（D14 路线 A）----
 
 class FakeCdpPage(FakePage):
-    """CDP 页面替身：显式指定 URL，并记录 close()（新建页才会被关闭）。"""
+    """CDP 页面替身：显式指定 URL，并记录 close()（新建页才会被关闭）。
 
-    def __init__(self, url: str = "https://mp.toutiao.com/", logged_in: bool = True):
+    evaluate_result：page.evaluate 的预设返回值（None 时 evaluate 抛错，
+    模拟未注入抓取结果的场景）。"""
+
+    def __init__(
+        self,
+        url: str = "https://mp.toutiao.com/",
+        logged_in: bool = True,
+        evaluate_result: str | None = None,
+    ):
         super().__init__(logged_in=logged_in)
         self.url = url
         self.closed = False
+        self.evaluate_result = evaluate_result
 
     def close(self) -> None:
         self.calls.append(("close",))
         self.closed = True
+
+    def evaluate(self, expression: str, arg=None):
+        self.calls.append(("evaluate", expression, arg))
+        if self.evaluate_result is None:
+            raise RuntimeError("evaluate_result 未注入")
+        return self.evaluate_result
 
 
 class FakeCdpContext:
@@ -341,3 +357,81 @@ def test_cdp_factory_ignored_without_endpoint():
 
     assert result.status == PublishStatus.DRAFT_READY
     assert called == []
+
+
+# ---- 已发布列表查询（2026-09-17 真机校准）----
+
+# 真机响应结构采样（.scratch/selector-calibration/published_list*_check.txt）：
+# {code: 0, contents: [{article_attr: {title, status, ...}}], total_count, has_more}
+def published_list_payload() -> str:
+    return json.dumps(
+        {
+            "code": 0,
+            "message": "success",
+            "contents": [
+                {"article_attr": {"title": " 图文快讯 ", "status": 2}},
+                {"article_attr": {"title": "微头条观察", "status": 2}},
+                {"article_attr": {"title": "", "status": 2}},  # 空标题跳过
+                {"article_attr": {"status": 2}},  # 缺标题跳过
+                {"article_attr": None},  # 结构异常跳过
+                {},  # 无 article_attr 跳过
+            ],
+            "total_count": 6,
+            "has_more": False,
+        },
+        ensure_ascii=False,
+    )
+
+
+def make_list_adapter(evaluate_result: str | None) -> tuple[ToutiaoDraftAdapter, FakeCdpPage]:
+    page = FakeCdpPage(
+        url="https://mp.toutiao.com/profile_v4/index", evaluate_result=evaluate_result
+    )
+    browser = FakeCdpBrowser([page])
+    adapter = ToutiaoDraftAdapter(
+        cdp_endpoint="http://localhost:9222", cdp_browser_factory=lambda ep: browser
+    )
+    return adapter, page
+
+
+def test_list_published_titles_fetches_calibrated_endpoint():
+    adapter, page = make_list_adapter(published_list_payload())
+
+    titles = adapter.list_published_titles(make_account())
+
+    assert titles == ["图文快讯", "微头条观察"]  # 归一化（strip）后返回
+    evals = [c for c in page.calls if c[0] == "evaluate"]
+    assert len(evals) == 1
+    assert evals[0][2] == SELECTORS["published_list_url"]  # fetch 真机校准端点
+    assert "credentials: 'include'" in evals[0][1]  # 同源带凭据
+    assert page.closed is False  # 复用标签页不关闭
+    assert ("goto", "https://mp.toutiao.com/") in page.calls  # 统一落点用于登录态检测
+
+
+def test_list_published_titles_without_cdp_returns_empty():
+    """profile 模式（无 cdp_endpoint）不支持列表查询：短路返回空，不连浏览器。"""
+    called: list[str] = []
+    adapter = ToutiaoDraftAdapter(cdp_browser_factory=lambda ep: called.append(ep))
+
+    assert adapter.list_published_titles(make_account()) == []
+    assert called == []
+
+
+def test_list_published_titles_not_logged_in_returns_empty():
+    adapter, page = make_list_adapter(published_list_payload())
+    page.logged_in = False
+    page.url = "https://mp.toutiao.com/auth/page/login"
+
+    assert adapter.list_published_titles(make_account()) == []
+    assert not [c for c in page.calls if c[0] == "evaluate"]  # 未登录不发起 fetch
+
+
+def test_parse_published_titles_rejects_abnormal_responses():
+    adapter = make_list_adapter(None)[0]
+
+    assert adapter._parse_published_titles("not json") == []  # 非 JSON
+    assert adapter._parse_published_titles('{"code": 7, "message": "err"}') == []  # code 非 0
+    assert adapter._parse_published_titles('{"code": 0}') == []  # 缺 contents
+    assert adapter._parse_published_titles('{"code": 0, "contents": "x"}') == []  # contents 非数组
+    assert adapter._parse_published_titles("[1, 2]") == []  # 顶层非对象
+    assert adapter._parse_published_titles(None) == []  # 非字符串入参

@@ -21,7 +21,8 @@ async def lifespan(app: FastAPI):
     db.migrate()
     app.state.db = db
 
-    # 图文发布确认轮询（零依赖 asyncio 后台任务；P1 校准 published_list_url 前空转）
+    # 图文发布确认轮询（零依赖 asyncio 后台任务；published_list_url 已真机校准，
+    # 未配 TOUTIAO_CDP_ENDPOINT 时仍为空转）
     stop_event = asyncio.Event()
     adapter = ToutiaoDraftAdapter(
         cdp_endpoint=os.environ.get("TOUTIAO_CDP_ENDPOINT") or None
